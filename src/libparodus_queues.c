@@ -1,14 +1,3 @@
-/******************************************************************************
-   Copyright [2016] [Comcast]
-
-   Comcast Proprietary and Confidential
-
-   All Rights Reserved.
-
-   Unauthorized copying of this file, via any medium is strictly prohibited
-
-******************************************************************************/
-
 #include "libparodus_queues.h"
 #include "libparodus_time.h"
 #include <stdio.h>
@@ -37,7 +26,7 @@ int libpd_qcreate (libpd_mq_t *mq, const char *queue_name, unsigned max_msgs)
 
 	*mq = NULL;
 	if (max_msgs < 2) {
-		libpd_log (LEVEL_ERROR, 0, 
+		log_error(
 			"Error creating queue %s: max_msgs(%u) should be at least 2\n",
 			queue_name, max_msgs);
 		return EINVAL;
@@ -47,8 +36,7 @@ int libpd_qcreate (libpd_mq_t *mq, const char *queue_name, unsigned max_msgs)
 	newq = (queue_t*) malloc (sizeof(queue_t));
 
 	if (NULL == newq) {
-		libpd_log (LEVEL_ERROR, 0, "Unable to allocate memory(1) for queue %s\n",
-			queue_name);
+		log_error("Unable to allocate memory(1) for queue %s\n", queue_name);
 		return ENOMEM;
 	}
 
@@ -60,16 +48,15 @@ int libpd_qcreate (libpd_mq_t *mq, const char *queue_name, unsigned max_msgs)
 
 	err = pthread_mutex_init (&newq->mutex, NULL);
 	if (err != 0) {
-		libpd_log (LEVEL_ERROR, err, "Error creating mutex for queue %s\n",
-			queue_name);
+		log_error( "Error creating mutex for queue %s %d\n", queue_name, err);
 		free (newq);
 		return err;
 	}
 
 	err = pthread_cond_init (&newq->not_empty_cond, NULL);
 	if (err != 0) {
-		libpd_log (LEVEL_ERROR, err, "Error creating not_empty_cond for queue %s\n",
-			queue_name);
+		log_error( "Error creating not_empty_cond for queue %s %d\n",
+			queue_name, err);
 		pthread_mutex_destroy (&newq->mutex);
 		free (newq);
 		return err;
@@ -77,8 +64,8 @@ int libpd_qcreate (libpd_mq_t *mq, const char *queue_name, unsigned max_msgs)
 
 	err = pthread_cond_init (&newq->not_full_cond, NULL);
 	if (err != 0) {
-		libpd_log (LEVEL_ERROR, err, "Error creating not_full_cond for queue %s\n",
-			queue_name);
+		log_error( "Error creating not_full_cond for queue %s %d\n",
+			queue_name, err);
 		pthread_mutex_destroy (&newq->mutex);
 		pthread_cond_destroy (&newq->not_empty_cond);
 		free (newq);
@@ -87,8 +74,7 @@ int libpd_qcreate (libpd_mq_t *mq, const char *queue_name, unsigned max_msgs)
 
 	newq->msg_array = malloc (array_size);
 	if (NULL == newq->msg_array) {
-		libpd_log (LEVEL_ERROR, 0, "Unable to allocate memory(2) for queue %s\n",
-			queue_name);
+		log_error( "Unable to allocate memory(2) for queue %s\n", queue_name);
 		pthread_mutex_destroy (&newq->mutex);
 		pthread_cond_destroy (&newq->not_empty_cond);
 		pthread_cond_destroy (&newq->not_full_cond);
@@ -174,8 +160,7 @@ int libpd_qsend (libpd_mq_t mq, void *msg, unsigned timeout_ms)
 		rtn = pthread_cond_timedwait (&q->not_full_cond, &q->mutex, &ts);
 		if (rtn != 0) {
 			if (rtn != ETIMEDOUT)
-				libpd_log (LEVEL_ERROR, rtn, 
-					"pthread_cond_timedwait error waiting for not_full_cond\n");
+				log_error( "pthread_cond_timedwait error waiting for not_full_cond %d\n", rtn);
 			pthread_mutex_unlock (&q->mutex);
 			return rtn;
 		}
@@ -204,8 +189,7 @@ int libpd_qreceive (libpd_mq_t mq, void **msg, unsigned timeout_ms)
 		rtn = pthread_cond_timedwait (&q->not_empty_cond, &q->mutex, &ts);
 		if (rtn != 0) {
 			if (rtn != ETIMEDOUT)
-				libpd_log (LEVEL_ERROR, rtn, 
-					"pthread_cond_timedwait error waiting for not_empty_cond\n");
+				log_error( "pthread_cond_timedwait error waiting for not_empty_cond %d\n", rtn);
 			pthread_mutex_unlock (&q->mutex);
 			return rtn;
 		}

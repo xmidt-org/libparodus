@@ -1,14 +1,3 @@
-/******************************************************************************
-   Copyright [2016] [Comcast]
-
-   Comcast Proprietary and Confidential
-
-   All Rights Reserved.
-
-   Unauthorized copying of this file, via any medium is strictly prohibited
-
-******************************************************************************/
-
 #ifndef  _LIBPARODUS_QUEUES_H
 #define  _LIBPARODUS_QUEUES_H
 
