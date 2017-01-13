@@ -14,7 +14,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdarg.h>
-//#include <cJSON.h>
 #include <sys/time.h>
 #include <sys/sysinfo.h>
 #include <pthread.h>

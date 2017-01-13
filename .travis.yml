@@ -1,0 +1,40 @@
+dist: trusty
+sudo: required
+
+language: c
+compiler:
+    - gcc
+
+env:
+  global:
+   # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+   #   via the "travis encrypt" command using the project repo's public key
+   - secure: "ed2I1cf4yAozxrY0bHB08YGWLA3ZT2hP2bOKVWqFXjDOnHiNXg7KgiImzeQtfLTtvfFx48VEjWGfJqyaeHrtJR7DXYkU0mBIq89IZpQt0O/7Y1hYidQDT3PV+2d1wtaWyMDE01mQ0WcpipgrZLbNKf0591N1mg7PH4q4YZykt0HSR0AGmIMRF8k5JEb1LiQT+xC+o2Kzj5EXGskqiEKiOobZmqpIDLBIE89XZi09ElWmVZQl8NE1XA7lqoZg8iIiyMqgh8iIQLNaE8MQ8/wKlVCCDctWKTfGX/YpggvaUz3cn6c1SXj8F2F2baSCXWataCXz1bYmKnJ3t7J8GldrFRhPf78sxjTOaFu2TyAyK/dHPNFUXChhvvOYz1vIKE+KyotEr11ruvoxT52h2M7vuybOlt4EUAa0seuaNyMRVUoEWyJErbtFIdcw9Gm0i+TN4FdVFboE72knxVGJGoEP6UhhJ6bIEpUuZhfvAla5eugrvYBWXPJVWsD+zXhhQjNn0PVzA5qJOaqfx6KKQ8eP7bAqrj6OqdCudQ7ty0PcymZ5R5k7INKqailTjzXq/HUZXDpSO6yMhIkiiVUAvXHvu8c35S3aMzeMA8TbyNt/mKr0/bF0WfXIRbS8RJ1/WcahYqlPpJbSZNaGkyOb1S9IPmEtIDSOhbYZ+1PFHHeRqOs="
+
+addons:
+  coverity_scan:
+    project:
+      name: "Comcast/libparodus"
+      description: "C implementation of the Parodus adapter"
+    notification_email: weston_schmidt@alumni.purdue.edu
+    build_command_prepend: "mkdir coverity_build && cd coverity_build && cmake .."
+    build_command:   "make"
+    branch_pattern: master
+    
+before_install:
+    - sudo pip install codecov
+    - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
+
+install:
+    - sudo apt-get update -qq
+    - sudo apt-get install -y -qq libcunit1 libcunit1-dev
+
+script:
+    - mkdir build
+    - cd build
+    - cmake ..
+    - make
+    - make test
+
+after_success:
+    - codecov
