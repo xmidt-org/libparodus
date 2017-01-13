@@ -46,6 +46,7 @@ target_link_libraries (libpd
                        -lpthread
                        -lrt)
 
+
 #-------------------------------------------------------------------------------
 #   mock code
 #-------------------------------------------------------------------------------
@@ -59,3 +60,11 @@ target_link_libraries (mock_parodus
  -lm
  -lpthread
 )
+
+#-------------------------------------------------------------------------------
+#   coverage
+#-------------------------------------------------------------------------------
+add_custom_target(coverage
+                  COMMAND lcov -q --capture --directory ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/libpd.dir/__/src --output-file coverage.info
+                  COMMAND genhtml coverage.info
+                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
