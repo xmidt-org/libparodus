@@ -31,7 +31,7 @@
  *
  * @param service_name the service name registered for
  * @return 0 on success, valid errno otherwise.
- * @note this is the same as libparodus_init_ext (service_name, log_handler, "R,C");
+ * @note this is the same as libparodus_init_ext (service_name, log_handler, "R,C,K65");
  */
 int libparodus_init (const char *service_name, parlibLogHandler log_handler);
 
@@ -40,7 +40,8 @@ int libparodus_init (const char *service_name, parlibLogHandler log_handler);
  *
  * @param service_name the service name registered for
  * @param options option string, 
- * 		currently 'R' for receiver, 'C' for connect-on-every-send
+ * 		currently 'R' for receiver, 'C' for connect-on-every-send,
+ * 		'K<nn>' for keep-alive with timeout <nn> secs
  * @return 0 on success, valid errno otherwise.
  */
 int libparodus_init_ext (const char *service_name, parlibLogHandler log_handler,

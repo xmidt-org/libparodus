@@ -109,6 +109,8 @@ extern bool test_create_wrp_queue (void);
 extern void test_close_wrp_queue (void);
 extern int  test_close_receiver (void);
 extern void test_send_wrp_queue_ok (void);
+extern int libpd_parse_options (const char *option_str );
+extern bool verify_libpd_options (bool rcv, bool connect, int timeout);
 
 
 extern const char *wrp_queue_name;
@@ -637,6 +639,39 @@ void test_send_only (void)
 	CU_ASSERT (libparodus_shutdown () == 0);
 }
 
+void test_options (void)
+{
+	int rtn;
+
+	rtn = libpd_parse_options (NULL);
+	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 65));
+
+	rtn = libpd_parse_options ("default");
+	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 65));
+
+	rtn = libpd_parse_options ("");
+	CU_ASSERT ( (rtn==0) && verify_libpd_options (false, false, 0));
+
+	rtn = libpd_parse_options ("R,C,K20");
+	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 20));
+
+	rtn = libpd_parse_options ("K200,CR");
+	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 200));
+
+	rtn = libpd_parse_options ("R,C");
+	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 65));
+
+	rtn = libpd_parse_options ("C");
+	CU_ASSERT ( (rtn==0) && verify_libpd_options (false, true, 0));
+
+	rtn = libpd_parse_options ("R,C,K2X");
+	CU_ASSERT (rtn!=0);
+
+	rtn = libpd_parse_options ("R,X,K2");
+	CU_ASSERT (rtn!=0);
+
+}
+
 void test_1(void)
 {
 	unsigned msgs_received_count = 0;
@@ -655,6 +690,7 @@ void test_1(void)
 
 	CU_ASSERT_FATAL (log_init (".", NULL) == 0);
 	test_queues ();
+	test_options ();
 
 	printf ("LIBPD_TEST: test connect receiver, good IP\n");
 	test_sock = connect_receiver (TEST_RCV_URL);
@@ -716,7 +752,7 @@ void test_1(void)
 	CU_ASSERT (setenv( "PARODUS_SERVICE_URL", parodus_url_orig, 1) == 0);
 	CU_ASSERT (setenv( "PARODUS_CLIENT_URL", BAD_CLIENT_URL, 1) == 0);
 	printf ("LIBPD_TEST: libparodus_init bad client url\n");
-	CU_ASSERT (libparodus_init (service_name, NULL) != 0);
+	CU_ASSERT (libparodus_init_ext (service_name, NULL, NULL) != 0);
 	CU_ASSERT (setenv( "PARODUS_CLIENT_URL", client_url_orig, 1) == 0);
 	printf ("LIBPD_TEST: libparodus_init bad options\n");
 	CU_ASSERT (libparodus_init_ext (service_name, NULL, "X") == EINVAL);

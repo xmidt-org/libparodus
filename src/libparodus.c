@@ -32,8 +32,8 @@
 #define PARODUS_CLIENT_URL "tcp://127.0.0.1:6667"
 //#define CLIENT_URL "ipc:///tmp/parodus_client.ipc"
 
-//const char *parodus_url = PARODUS_SERVICE_URL;
-//const char *client_url = PARODUS_CLIENT_URL;
+#define DEFAULT_KEEPALIVE_TIMEOUT_SECS 65
+#define DEFAULT_OPTIONS_STR "R,C,K65"
 
 char parodus_url[32] = {'\0'};
 char client_url[32] = {'\0'};
@@ -251,7 +251,15 @@ static int send_registration_msg (const char *service_name)
 	return wrp_sock_send (&reg_msg);
 }
 
-static int parse_options (const char *option_str )
+static void show_options (void)
+{
+	libpd_log (LEVEL_DEBUG, 0, 
+		"LIBPARODUS Options: Rcv: %d, Connect: %d, KA Timeout: %d\n",
+		libpd_options.receive, libpd_options.connect_on_every_send,
+		libpd_options.keepalive_timeout_secs);
+}
+
+int libpd_parse_options (const char *option_str )
 {
 	int i;
 	char c;
@@ -260,10 +268,15 @@ static int parse_options (const char *option_str )
 
 	libpd_options.receive = true;
 	libpd_options.connect_on_every_send = true;
-	if (NULL == option_str)
+	libpd_options.keepalive_timeout_secs = DEFAULT_KEEPALIVE_TIMEOUT_SECS;
+	if (NULL == option_str) {
+		show_options ();
 		return 0;
-	if (strcasecmp (option_str, "default") == 0)
+	}
+	if (strcasecmp (option_str, "default") == 0) {
+		show_options ();
 		return 0;
+	}
 	libpd_options.receive = false;
 	libpd_options.connect_on_every_send = false;
 	for (i=0; (c=option_str[i]) != 0; i++)
@@ -298,11 +311,12 @@ static int parse_options (const char *option_str )
 		libpd_log (LEVEL_ERROR, 0, "Invalid option \'%c\'.\n", c);
 		return -1;
 	}
-	libpd_options.keepalive_timeout_secs = keepalive_timeout;
-	libpd_log (LEVEL_DEBUG, 0, "LIBPARODUS Options: Rcv: %d, Connect: %d\n",
-		libpd_options.receive, libpd_options.connect_on_every_send);
+	if (keepalive_timeout != 0)
+		libpd_options.keepalive_timeout_secs = keepalive_timeout;
+	show_options ();
 	return 0;
 }
+
  
 int libparodus_init_ext (const char *service_name, parlibLogHandler log_handler,
 		const char *options)
@@ -323,7 +337,7 @@ int libparodus_init_ext (const char *service_name, parlibLogHandler log_handler,
 		libpd_log (LEVEL_NO_LOGGER, 0, "Failed to init logger\n");
 		return -1;
 	}
-	if (parse_options (options) != 0) {
+	if (libpd_parse_options (options) != 0) {
 		return EINVAL;
 	}
   //Call getParodusUrl to get parodus and client url
@@ -395,7 +409,7 @@ int libparodus_init_ext (const char *service_name, parlibLogHandler log_handler,
 
 int libparodus_init (const char *service_name, parlibLogHandler log_handler)
 {
-	return libparodus_init_ext (service_name, log_handler, "R,C");
+	return libparodus_init_ext (service_name, log_handler, DEFAULT_OPTIONS_STR);
 }
 
 // When msg_len is given as -1, then msg is a null terminated string
@@ -755,6 +769,17 @@ int flush_wrp_queue (uint32_t delay_ms)
 }
 
 // Functions used by libpd_test.c
+
+bool verify_libpd_options (bool rcv, bool connect, int timeout)
+{
+	if (rcv)
+		return ((libpd_options.receive == rcv) &&
+					(libpd_options.connect_on_every_send == connect) &&
+					(libpd_options.keepalive_timeout_secs == timeout));
+	else
+		return ((libpd_options.receive == rcv) &&
+					(libpd_options.connect_on_every_send == connect));
+}
 
 int test_create_wrp_queue (void)
 {
