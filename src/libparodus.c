@@ -279,6 +279,7 @@ int libpd_parse_options (const char *option_str )
 	}
 	libpd_options.receive = false;
 	libpd_options.connect_on_every_send = false;
+	libpd_options.keepalive_timeout_secs = 0;
 	for (i=0; (c=option_str[i]) != 0; i++)
 	{
 		if (entering_keepalive) {
@@ -305,6 +306,7 @@ int libpd_parse_options (const char *option_str )
 		}
 		if (c=='K') {
 			entering_keepalive = true;
+			libpd_options.keepalive_timeout_secs = DEFAULT_KEEPALIVE_TIMEOUT_SECS;
 			keepalive_timeout = 0;
 			continue;
 		}

@@ -658,8 +658,11 @@ void test_options (void)
 	rtn = libpd_parse_options ("K200,CR");
 	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 200));
 
-	rtn = libpd_parse_options ("R,C");
+	rtn = libpd_parse_options ("R,C,K");
 	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 65));
+
+	rtn = libpd_parse_options ("R,C");
+	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 0));
 
 	rtn = libpd_parse_options ("C");
 	CU_ASSERT ( (rtn==0) && verify_libpd_options (false, true, 0));
