@@ -1,0 +1,34 @@
+dist: trusty
+sudo: required
+
+language: c
+compiler:
+    - gcc
+
+addons:
+  coverity_scan:
+    project:
+      name: "Comcast/libparodus"
+      description: "C implementation of the Parodus adapter"
+    notification_email: weston_schmidt@alumni.purdue.edu
+    build_command_prepend: "mkdir coverity_build && cd coverity_build && cmake .."
+    build_command:   "make"
+    branch_pattern: master
+    
+before_install:
+    - sudo pip install codecov
+    - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
+
+install:
+    - sudo apt-get update -qq
+    - sudo apt-get install -y -qq libcunit1 libcunit1-dev
+
+script:
+    - mkdir build
+    - cd build
+    - cmake ..
+    - make
+    - make test
+
+after_success:
+    - codecov
