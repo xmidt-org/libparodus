@@ -14,7 +14,7 @@
 
 set(PROJ_PARODUS_LIB libparodus)
 
-file(GLOB HEADERS libparodus.h)
+file(GLOB HEADERS libparodus.h libparodus_log.h)
 set(SOURCES libparodus.c libparodus_log.c libparodus_time.c libparodus_queues.c)
 
 add_library(${PROJ_PARODUS_LIB} STATIC ${HEADERS} ${SOURCES})
@@ -24,3 +24,4 @@ set_target_properties(${PROJ_PARODUS_LIB}.shared PROPERTIES OUTPUT_NAME ${PROJ_P
 install (TARGETS ${PROJ_PARODUS_LIB} DESTINATION lib${LIB_SUFFIX})
 install (TARGETS ${PROJ_PARODUS_LIB}.shared DESTINATION lib${LIB_SUFFIX})
 install (FILES libparodus.h DESTINATION include/${PROJ_PARODUS_LIB})
+install (FILES libparodus_log.h DESTINATION include/${PROJ_PARODUS_LIB})
