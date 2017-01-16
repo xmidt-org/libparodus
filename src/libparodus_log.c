@@ -36,18 +36,22 @@ int current_level = LEVEL_DEBUG;
 int current_level = LEVEL_INFO;
 #endif
 
+#define MSG_BUF_SIZE 4096
+
 /* log handling */
 parlibLogHandler     log_handler =NULL;
 
 pthread_mutex_t log_mutex=PTHREAD_MUTEX_INITIALIZER;
 
+const char *level_names[3] = {"ERROR", "INFO ", "DEBUG"};
+
+void libpd_log ( int level, int os_errno, const char *msg, ...);
+
+
 #ifdef TEST_ENVIRONMENT
 const char *test_log_date = NULL; // set this for testing
-#endif
 
 const char *libpd_log_dir = NULL;
-
-const char *level_names[3] = {"ERROR", "INFO ", "DEBUG"};
 
 int current_fd = -1;
 
@@ -59,42 +63,9 @@ char current_file_name[128];
 
 long current_file_size = 0;
 
-void libpd_log ( int level, int os_errno, const char *msg, ...);
-
-#if 0
-void print_errno (void)
-{
-		char errbuf[100];
-		printf ("%s\n", strerror_r (errno, errbuf, 100));
-}
-
-void dbg (const char *fmt, ...)
-{
-#ifdef TEST_ENVIRONMENT
-    va_list arg_ptr;
-    va_start(arg_ptr, fmt);
-    vprintf(fmt, arg_ptr);
-    va_end(arg_ptr);
-#endif
-}
-
-void dbg_err (int err, const char *fmt, ...)
-{
-#ifdef TEST_ENVIRONMENT
-		char errbuf[100];
-
-    va_list arg_ptr;
-    va_start(arg_ptr, fmt);
-    vprintf(fmt, arg_ptr);
-    va_end(arg_ptr);
-		printf ("%s\n", strerror_r (err, errbuf, 100));
-#endif
-}
-#endif
 
 static int my_current_date (char *date)
 {
-#ifdef TEST_ENVIRONMENT
 	if (test_log_date != NULL) {	
 		if (strlen (test_log_date) == 8) {
 			strncpy (date, test_log_date, 8);
@@ -102,7 +73,6 @@ static int my_current_date (char *date)
 		}
 		test_log_date += 1;
 	}
-#endif
 	return get_current_date (date);
 }
 
@@ -246,7 +216,6 @@ static int open_next_file (void)
 	return open_file (false);
 }
 
-
 int log_init (const char *log_directory, parlibLogHandler handler)
 {
 	int err;
@@ -286,8 +255,6 @@ int log_shutdown (void)
 	return 0;
 }
 
-#define MSG_BUF_SIZE 4096
-
 int output_log (int level, char *msg_buf, const char *fmt, va_list arg_ptr, int err_code)
 {
 	int err = 0;
@@ -321,9 +288,7 @@ int output_log (int level, char *msg_buf, const char *fmt, va_list arg_ptr, int 
 		nbytes += error_len; 
 	}
 
-#ifdef TEST_ENVIRONMENT
 	write (STDOUT_FILENO, msg_buf, nbytes);
-#endif
 
 	if (NULL == libpd_log_dir)
 		return 0;
@@ -340,57 +305,6 @@ int output_log (int level, char *msg_buf, const char *fmt, va_list arg_ptr, int 
 	pthread_mutex_unlock (&log_mutex);
 	return err;
 }
-
-#if 0
-#define BUF_PRINT(level, fmt, err_code) \
-    va_list arg_ptr; \
-    va_start(arg_ptr, fmt); \
-		output_log (level, fmt, arg_ptr, err_code); \
-    va_end(arg_ptr);
-
-void log_not (const char *fmt, ...)
-{
-}
-
-void log_dbg (const char *fmt, ...)
-{
-	if (current_level >= LEVEL_DEBUG) {
-		BUF_PRINT (LEVEL_DEBUG, fmt, 0);
-	}
-}
-
-void log_info (const char *fmt, ...)
-{
-	if (current_level >= LEVEL_INFO) {
-		BUF_PRINT (LEVEL_INFO, fmt, 0);
-	}
-}
-
-void log_error (const char *fmt, ...)
-{
-	BUF_PRINT (LEVEL_ERROR, fmt, 0);
-}
-
-void log_errno (int err, const char *fmt, ...)
-{
-	BUF_PRINT (LEVEL_ERROR, fmt, err);
-}
-
-/**
- * @brief Allows to define a log handler that will receive all logs
- * produced under the provided content.
- *
- * @param handler The handler to be called for each log to be
- * notified. Passing in NULL is allowed to remove any previously
- * configured handler.
- *
- */
-void  libpd_log_set_handler (parlibLogHandler handler)
-{
-        log_handler   = handler;
-        return;
-}
-#endif
 
 
 void libpd_log ( int level, int os_errno, const char *msg, ...)
@@ -460,4 +374,70 @@ void libpd_log ( int level, int os_errno, const char *msg, ...)
 	}
 	return;	
 }
+#else
+
+int log_init (const char *log_directory __attribute__ ((unused)), parlibLogHandler handler)
+{
+	log_handler = handler;
+
+	return 0;
+}
+
+int log_shutdown (void)
+{
+	return 0;
+}
+
+void libpd_log ( int level, int os_errno, const char *msg, ...)
+{
+	char *pTempChar = NULL;
+	char errbuf[100];
+	const char *err_msg;
+	int error_len, buf_limit, nbytes;
+	
+	va_list arg_ptr; 
+
+	pTempChar = (char *)malloc(MSG_BUF_SIZE);
+	if(pTempChar)
+	{
+
+		if (NULL == log_handler) {
+			printf ("LIBPD: no log handler provided\n");
+			return;
+		}
+
+		buf_limit = MSG_BUF_SIZE;
+		error_len = 0;
+		if (os_errno != 0) {
+			err_msg = strerror_r (os_errno, errbuf, 100);
+			error_len = strlen (err_msg)+3;
+			buf_limit -= error_len;
+		}
+
+		va_start(arg_ptr, msg); 
+
+		nbytes = vsnprintf(pTempChar, buf_limit, msg, arg_ptr);
+		if(nbytes < 0)
+		{
+			perror(pTempChar);
+		}
+		va_end(arg_ptr);
+
+		if ((nbytes >= 0) && (os_errno != 0)) {
+			sprintf (pTempChar+nbytes, ": %s\n", err_msg);
+		}
+		
+		log_handler (level, pTempChar);
+	
+		if(pTempChar !=NULL)
+		{
+			free(pTempChar);
+			pTempChar = NULL;
+		}
+			
+	}
+	return;	
+}
+
+#endif
 

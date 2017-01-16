@@ -574,6 +574,7 @@ void test_queues (void)
 	CU_ASSERT (flush_queue_count == 0);
 }
 
+#ifdef TEST_ENVIRONMENT
 void dbg_log_err (const char *fmt, ...)
 {
 		char errbuf[100];
@@ -616,6 +617,33 @@ void test_log (void)
 	CU_ASSERT (make_test_log_file ("20161102", 4) == 0);
 	CU_ASSERT (get_last_file_num_in_dir ("20161102", ".") == 4);
 }
+#else
+extern const char *level_names[3];
+
+void handler_log_msg (int level, const char *log_msg)
+{
+	int err = 0;
+	char timestamp[TIMESTAMP_BUFLEN];
+
+	err = make_current_timestamp (timestamp);
+	if (err != 0)
+		timestamp[0] = '\0';
+
+	printf ("[%s] %s: %s", timestamp, level_names[level], log_msg);
+}
+
+void test_log (void)
+{
+	int rtn = log_init (NULL, handler_log_msg);
+	CU_ASSERT (rtn == 0);
+	if (rtn != 0)
+		return;
+	libpd_log (LEVEL_INFO, 0, "Test error %d\n", 55);
+	libpd_log (LEVEL_INFO, EINVAL, "Test error %s\n", "string");
+	libpd_log (LEVEL_DEBUG, 0, "Test debug error\n");
+}
+
+#endif
 
 void wait_auth_received (void)
 {
@@ -643,6 +671,7 @@ void test_options (void)
 {
 	int rtn;
 
+	printf ("LIBPD_TEST: testing options\n");
 	rtn = libpd_parse_options (NULL);
 	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 65));
 
@@ -684,6 +713,7 @@ void test_1(void)
 	wrp_msg_t *wrp_msg;
 	unsigned event_num = 0;
 	unsigned msg_num = 0;
+	parlibLogHandler log_handler;
 	const char *parodus_url_orig = GOOD_PARODUS_URL;
 	const char *client_url_orig = GOOD_CLIENT_URL;
 
@@ -691,7 +721,11 @@ void test_1(void)
 	test_log ();
 	CU_ASSERT_FATAL (check_current_dir() == 0);
 
+#ifdef TEST_ENVIRONMENT
 	CU_ASSERT_FATAL (log_init (".", NULL) == 0);
+#else
+	CU_ASSERT_FATAL (log_init (".", handler_log_msg) == 0);
+#endif
 	test_queues ();
 	test_options ();
 
@@ -749,16 +783,22 @@ void test_1(void)
 
 	CU_ASSERT (libparodus_receive (&wrp_msg, 500) == -1);
 
+#ifdef TEST_ENVIRONMENT
+	log_handler = NULL;
+#else
+	log_handler = handler_log_msg;
+#endif
+
 	printf ("LIBPD_TEST: libparodus_init bad parodus ip\n");
 	CU_ASSERT (setenv( "PARODUS_SERVICE_URL", BAD_PARODUS_URL, 1) == 0);
-	CU_ASSERT (libparodus_init (service_name, NULL) != 0);
+	CU_ASSERT (libparodus_init (service_name, log_handler) != 0);
 	CU_ASSERT (setenv( "PARODUS_SERVICE_URL", parodus_url_orig, 1) == 0);
 	CU_ASSERT (setenv( "PARODUS_CLIENT_URL", BAD_CLIENT_URL, 1) == 0);
 	printf ("LIBPD_TEST: libparodus_init bad client url\n");
-	CU_ASSERT (libparodus_init_ext (service_name, NULL, NULL) != 0);
+	CU_ASSERT (libparodus_init_ext (service_name, log_handler, NULL) != 0);
 	CU_ASSERT (setenv( "PARODUS_CLIENT_URL", client_url_orig, 1) == 0);
 	printf ("LIBPD_TEST: libparodus_init bad options\n");
-	CU_ASSERT (libparodus_init_ext (service_name, NULL, "X") == EINVAL);
+	CU_ASSERT (libparodus_init_ext (service_name, log_handler, "X") == EINVAL);
 
 	log_shutdown ();
 
@@ -779,15 +819,15 @@ void test_1(void)
 	}
 
 	printf ("LIBPD_TEST: no receive option\n");
-	CU_ASSERT (libparodus_init_ext (service_name, NULL, "") == 0);
+	CU_ASSERT (libparodus_init_ext (service_name, log_handler, "") == 0);
 	CU_ASSERT (send_event_msgs (NULL, &event_num, 5) == 0);
 	CU_ASSERT (libparodus_receive (&wrp_msg, 500) == -3);
 	CU_ASSERT (libparodus_shutdown () == 0);
 
 	if (using_mock) {
-		CU_ASSERT (libparodus_init_ext (service_name, NULL, "R,C,K20") == 0);
+		CU_ASSERT (libparodus_init_ext (service_name, log_handler, "R,C,K20") == 0);
 	} else {
-		CU_ASSERT (libparodus_init (service_name, NULL) == 0);
+		CU_ASSERT (libparodus_init (service_name, log_handler) == 0);
 	}
 	printf ("LIBPD_TEST: libparodus_init successful\n");
 	initEndKeypressHandler ();

@@ -14,15 +14,21 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
-#define LEVEL_NO_LOGGER 99
 #define LEVEL_ERROR 0
 #define LEVEL_INFO  1
 #define LEVEL_DEBUG 2
 
+// When not compiled with TEST_ENVIRONMENT, 
+//		a log_handler function must be provided.
+// When compiled with TEST_ENVIRONMENT,
+//		a log handler function can, but need not be provided.
+//#define TEST_ENVIRONMENT 1
 
-// Messages are always written to log files, but when TEST_ENVIRONMENT 
-// is defined, messages are also displayed on the terminal screen.
-#define TEST_ENVIRONMENT 1
+#ifdef TEST_ENVIRONMENT
+#define LEVEL_NO_LOGGER 99
+#else
+#define LEVEL_NO_LOGGER LEVEL_INFO
+#endif
 
 /**
  * @brief Handler used by svcagt_log_set_handler to receive all log
@@ -35,6 +41,15 @@
  */
 typedef void (*parlibLogHandler) (int level, const char * log_msg);
 
+/**
+ * @brief Initialize the logger
+ *
+ * @param log_directory only used if TEST_ENVIRONMENT defined
+ *
+ * @param handler pointer to log handler function. may be null if TEST_ENVIRONMENT
+ * defined.
+ *
+ */
 int log_init (const char *log_directory, parlibLogHandler handler);
 
 int log_shutdown (void);
