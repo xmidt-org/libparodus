@@ -81,5 +81,12 @@ int make_current_timestamp (char *timestamp);
  */
 int get_expire_time (uint32_t ms, struct timespec *ts);
 
+/**
+ * Delay
+ *
+ * @param msecs  delay in msecs
+ */
+void delay_ms (unsigned msecs);
+
 #endif
 

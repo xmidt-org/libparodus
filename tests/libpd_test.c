@@ -473,14 +473,6 @@ void qfree (void * msg)
 	free (msg);
 }
 
-void delay_ms(unsigned int secs, unsigned int msecs)
-{
-  struct timespec ts;
-  ts.tv_sec = (time_t) secs;
-  ts.tv_nsec = (long) msecs * 1000000L;
-  nanosleep (&ts, NULL);
-}
-
 typedef struct {
 	libpd_mq_t queue;
 	unsigned initial_wait_ms;
@@ -495,7 +487,7 @@ static void *test_queue_sender_thread (void *arg)
 
 	printf ("LIBPD_TEST: started test_queue_sender_thread\n");
 	if (qinfo->initial_wait_ms != 0)
-		delay_ms (0, qinfo->initial_wait_ms);
+		delay_ms (qinfo->initial_wait_ms);
 
 	for (i=0; i<qinfo->num_msgs; i++)
 	{
@@ -562,10 +554,10 @@ void test_queues (void)
 		(&sender_test_tid, NULL, test_queue_sender_thread, (void*) &qinfo);
 	CU_ASSERT (rtn == 0);
 	if (rtn == 0) {
-		delay_ms (0, 2000);
+		delay_ms (2000);
 		for (i=0; i< (int)qinfo.num_msgs; i++) {
 			test_queue_rcv_msg (qinfo.queue, 4000, -1);
-			delay_ms (0, 500);
+			delay_ms (500);
 		}
 		pthread_join (sender_test_tid, NULL);
 	}
@@ -787,6 +779,7 @@ void test_1(void)
 	if (using_mock) {
 		CU_ASSERT (libparodus_init_ext (service_name, NULL, "R,C,K20") == 0);
 	} else {
+		//CU_ASSERT (libparodus_init_ext (service_name, NULL, "R,C") == 0);
 		CU_ASSERT (libparodus_init (service_name, NULL) == 0);
 	}
 	printf ("LIBPD_TEST: libparodus_init successful\n");

@@ -163,22 +163,29 @@ int libpd_qsend (libpd_mq_t mq, void *msg, unsigned timeout_ms)
 	queue_t *q = (queue_t*) mq;
 	struct timespec ts;
 	int rtn;
+	unsigned wait_ms = 0;
 
 	if (NULL == mq)
 		return EINVAL;
-	pthread_mutex_lock (&q->mutex);
 	while (true) {
+		pthread_mutex_lock (&q->mutex);
 		if (enqueue_msg (q, msg))
 			break;
 		get_expire_time (timeout_ms, &ts);
 		rtn = pthread_cond_timedwait (&q->not_full_cond, &q->mutex, &ts);
+		if (enqueue_msg (q, msg))
+			break;
+		pthread_mutex_unlock (&q->mutex);
 		if (rtn != 0) {
 			if (rtn != ETIMEDOUT)
 				libpd_log (LEVEL_ERROR, rtn, 
 					"pthread_cond_timedwait error waiting for not_full_cond\n");
-			pthread_mutex_unlock (&q->mutex);
 			return rtn;
 		}
+		if (wait_ms > 0)
+			delay_ms (wait_ms);
+		if (wait_ms < 500)
+			wait_ms += 20;
 	}
 	if (q->msg_count == 1)
 		pthread_cond_signal (&q->not_empty_cond);
@@ -192,23 +199,31 @@ int libpd_qreceive (libpd_mq_t mq, void **msg, unsigned timeout_ms)
 	struct timespec ts;
 	void *msg__;
 	int rtn;
+	unsigned wait_ms = 0;
 
 	if (NULL == mq)
 		return EINVAL;
-	pthread_mutex_lock (&q->mutex);
 	while (true) {
+		pthread_mutex_lock (&q->mutex);
 		msg__ = dequeue_msg (q);
 		if (NULL != msg__)
 			break;
 		get_expire_time (timeout_ms, &ts);
 		rtn = pthread_cond_timedwait (&q->not_empty_cond, &q->mutex, &ts);
+		msg__ = dequeue_msg (q);
+		if (NULL != msg__)
+			break;
+		pthread_mutex_unlock (&q->mutex);
 		if (rtn != 0) {
 			if (rtn != ETIMEDOUT)
 				libpd_log (LEVEL_ERROR, rtn, 
 					"pthread_cond_timedwait error waiting for not_empty_cond\n");
-			pthread_mutex_unlock (&q->mutex);
 			return rtn;
 		}
+		if (wait_ms > 0)
+			delay_ms (wait_ms);
+		if (wait_ms < 500)
+			wait_ms += 20;
 	}
 	*msg = msg__;
 	if ((q->msg_count+1) == (int)q->max_msgs)

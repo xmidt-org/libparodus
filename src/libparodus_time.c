@@ -147,6 +147,13 @@ int get_expire_time (uint32_t ms, struct timespec *ts)
 	return 0;
 }
 
+void delay_ms(unsigned msecs)
+{
+  struct timespec ts;
+  ts.tv_sec = (time_t) (msecs / 1000);
+  ts.tv_nsec = (long) (msecs % 1000) * 1000000L;
+  nanosleep (&ts, NULL);
+}
 
 
 
