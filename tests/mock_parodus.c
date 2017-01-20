@@ -95,6 +95,8 @@ static int end_pipe_fd = -1;
 static char end_pipe_name[NAME_BUFLEN];
 static char *end_pipe_msg = END_PIPE_MSG;
 
+static volatile unsigned suspend_receive_secs = 0;
+
 //static char deviceMAC[32]={'\0'}; 
 static volatile bool terminated = false;
 static ParodusMsg *ParodusMsgQ = NULL;
@@ -309,6 +311,11 @@ static void *handle_upstream()
 		buf = NULL;
 		printf("nanomsg server gone into the listening mode...\n");
 		
+		if (suspend_receive_secs != 0) {
+			sleep (suspend_receive_secs);
+			suspend_receive_secs = 0;
+		}
+
 		bytes = nn_recv (sock, &buf, NN_MSG, 0);
 			
 		printf ("Upstream message received from nanomsg client: \"%s\"\n", (char*)buf);
@@ -1069,10 +1076,30 @@ static int get_trans_num (wrp_msg_t *msg)
 	return (int) trans;
 }
 
+static void handleUpstreamEvent (wrp_msg_t *msg)
+{
+	int rtn;
+	unsigned wait_len;
+	const char *test_msg = "---SendBlockTest";
+	size_t test_msg_len = strlen(test_msg);
+	char *payload = (char*) msg->u.event.payload;
+	if (strncmp (test_msg, payload, test_msg_len) == 0)
+		return;
+	show_wrp_msg (msg);
+	rtn = sscanf (payload, "---SuspendReceive %u", &wait_len);
+	if (rtn != 1)
+		return;
+	suspend_receive_secs = wait_len;	
+}
+
 /** To send upstream msgs to server ***/
 static void handleUpstreamMessage(wrp_msg_t *msg)
 {
 	int trans_num;
+	if (msg->msg_type == WRP_MSG_TYPE__EVENT) {
+		handleUpstreamEvent (msg);
+		return;
+	}
 	show_wrp_msg (msg);
 	if (msg->msg_type != WRP_MSG_TYPE__REQ)
 		return;

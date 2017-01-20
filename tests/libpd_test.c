@@ -343,6 +343,27 @@ int send_event_msgs (unsigned *msg_num, unsigned *event_num, int count)
 	return 0;
 }
 
+void test_send_blocking (void)
+{
+	unsigned event_num = 0;
+	unsigned suspend_time = 15;
+	printf ("LIBPD_TEST: Begin Send Blocking Test\n");
+	int rtn =	send_event_msg ("---LIBPARODUS---", "---ParodusService---",
+			"---SuspendReceive ####", suspend_time);
+	CU_ASSERT (rtn == 0);
+	if (rtn != 0)
+		return;
+	while (true) {
+		event_num++;
+		rtn =	send_event_msg ("---LIBPARODUS---", "---ParodusService---",
+			"---SendBlockTest ####", event_num);
+		if (rtn != 0)
+			break;
+	}
+	printf ("LIBPD_TEST: End Send Blocking Test\n");
+	sleep (5);
+}
+
 int start_mock_parodus ()
 {
 	int pid;
@@ -774,6 +795,7 @@ void test_1(void)
 	CU_ASSERT (libparodus_init_ext (service_name, NULL, "") == 0);
 	CU_ASSERT (send_event_msgs (NULL, &event_num, 5) == 0);
 	CU_ASSERT (libparodus_receive (&wrp_msg, 500) == -3);
+	test_send_blocking ();
 	CU_ASSERT (libparodus_shutdown () == 0);
 
 	if (using_mock) {
