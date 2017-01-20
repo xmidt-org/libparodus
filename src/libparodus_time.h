@@ -16,6 +16,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+//#define TEST_SOCKET_TIMING 1
+
 #define TIMESTAMP_LEN 19
 #define TIMESTAMP_BUFLEN (TIMESTAMP_LEN+1)
 
@@ -87,6 +89,28 @@ int get_expire_time (uint32_t ms, struct timespec *ts);
  * @param msecs  delay in msecs
  */
 void delay_ms (unsigned msecs);
+
+#ifdef TEST_SOCKET_TIMING
+
+typedef struct {
+	unsigned count;
+	struct timeval total_time;
+	struct timeval send_time;
+} sst_totals_t;
+
+typedef struct {
+	struct timeval connect_time;
+	struct timeval send_time;
+} sst_times_t;
+
+void sst_init_totals (void);
+void sst_start_total_timing (sst_times_t *times);
+void sst_start_send_timing (sst_times_t *times);
+void sst_update_send_time (sst_times_t *times);
+void sst_update_total_time (sst_times_t *times);
+int sst_display_totals (void);
+
+#endif
 
 #endif
 

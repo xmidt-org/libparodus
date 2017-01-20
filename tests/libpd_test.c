@@ -627,7 +627,7 @@ void test_send_only (void)
 	unsigned event_num = 0;
 
 	CU_ASSERT (libparodus_init_ext (service_name, NULL, "C") == 0);
-	CU_ASSERT (send_event_msgs (NULL, &event_num, 10) == 0);
+	CU_ASSERT (send_event_msgs (NULL, &event_num, 200) == 0);
 	CU_ASSERT (libparodus_shutdown () == 0);
 }
 
@@ -636,10 +636,10 @@ void test_options (void)
 	int rtn;
 
 	rtn = libpd_parse_options (NULL);
-	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 65));
+	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, false, 65));
 
 	rtn = libpd_parse_options ("default");
-	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 65));
+	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, false, 65));
 
 	rtn = libpd_parse_options ("");
 	CU_ASSERT ( (rtn==0) && verify_libpd_options (false, false, 0));
@@ -777,20 +777,21 @@ void test_1(void)
 	CU_ASSERT (libparodus_shutdown () == 0);
 
 	if (using_mock) {
-		CU_ASSERT (libparodus_init_ext (service_name, NULL, "R,C,K20") == 0);
+		rtn = libparodus_init_ext (service_name, NULL, "R,C,K20");
 	} else {
-		//CU_ASSERT (libparodus_init_ext (service_name, NULL, "R,C") == 0);
-		CU_ASSERT (libparodus_init (service_name, NULL) == 0);
+		//rtn = libparodus_init_ext (service_name, NULL, "R,C");
+		rtn = libparodus_init (service_name, NULL);
 	}
+	CU_ASSERT_FATAL (rtn == 0);
 	printf ("LIBPD_TEST: libparodus_init successful\n");
 	initEndKeypressHandler ();
 
-	wait_auth_received ();
-	if (is_auth_received()) {
+	//wait_auth_received ();
+	//if (is_auth_received()) {
 		printf ("LIBPD_TEST: Test invalid wrp message\n");
 		wrp_msg = (wrp_msg_t *) "*** Invalid WRP message\n";
 		CU_ASSERT (libparodus_send (wrp_msg) != 0);
-	}
+	//}
 
 	printf ("LIBPD_TEST: starting msg receive loop\n");
 	while (true) {

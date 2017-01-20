@@ -25,13 +25,16 @@
  * to the parodus service.
  */ 
 
+#define LIBPD_DEFAULT_OPT_RECEIVE "R,K65"
+#define LIBPD_OPT_RECEIVE_NO_KEEPALIVE "R"
+#define LIBPD_DEFAULT_OPT_SEND_ONLY ""
 
 /**
  * Initialize the parodus wrp interface
  *
  * @param service_name the service name registered for
  * @return 0 on success, valid errno otherwise.
- * @note this is the same as libparodus_init_ext (service_name, log_handler, "R,C,K65");
+ * @note this is the same as libparodus_init_ext (service_name, log_handler, "R,K65");
  */
 int libparodus_init (const char *service_name, parlibLogHandler log_handler);
 

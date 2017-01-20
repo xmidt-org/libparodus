@@ -33,7 +33,7 @@
 //#define CLIENT_URL "ipc:///tmp/parodus_client.ipc"
 
 #define DEFAULT_KEEPALIVE_TIMEOUT_SECS 65
-#define DEFAULT_OPTIONS_STR "R,C,K65"
+#define DEFAULT_OPTIONS_STR "R,K65"
 
 char parodus_url[32] = {'\0'};
 char client_url[32] = {'\0'};
@@ -59,7 +59,7 @@ typedef struct {
 	int keepalive_timeout_secs;
 } libpd_options_t;
 
-static libpd_options_t libpd_options = {true, true, 0};
+static libpd_options_t libpd_options = {true, false, 0};
 
 typedef struct {
 	int len;
@@ -267,7 +267,7 @@ int libpd_parse_options (const char *option_str )
 	unsigned keepalive_timeout = 0; 
 
 	libpd_options.receive = true;
-	libpd_options.connect_on_every_send = true;
+	libpd_options.connect_on_every_send = false;
 	libpd_options.keepalive_timeout_secs = DEFAULT_KEEPALIVE_TIMEOUT_SECS;
 	if (NULL == option_str) {
 		show_options ();
@@ -389,6 +389,10 @@ int libparodus_init_ext (const char *service_name, parlibLogHandler log_handler,
 		}
 	}
 
+#ifdef TEST_SOCKET_TIMING
+	sst_init_totals ();
+#endif
+
 	run_state = RUN_STATE_RUNNING;
 
 #ifdef PARODUS_SERVICE_REQUIRES_REGISTRATION
@@ -396,6 +400,9 @@ int libparodus_init_ext (const char *service_name, parlibLogHandler log_handler,
 #else
 	need_to_send_registration = libpd_options.receive;
 #endif
+
+	if (!libpd_options.receive)
+		libpd_log (LEVEL_DEBUG, 0, "LIBPARODUS: Init without receiver\n");
 
 	if (need_to_send_registration) {
 		libpd_log (LEVEL_INFO, 0, "LIBPARODUS: sending registration msg\n");
@@ -456,6 +463,10 @@ int libparodus_shutdown (void)
 		libpd_log (LEVEL_NO_LOGGER, 0, "LIBPARODUS: not running at shutdown\n");
 		return -1;
 	}
+
+#ifdef TEST_SOCKET_TIMING
+	sst_display_totals ();
+#endif
 
 	run_state = RUN_STATE_DONE;
 	libpd_log (LEVEL_INFO, 0, "LIBPARODUS: Shutting Down\n");
@@ -578,6 +589,12 @@ static int wrp_sock_send (wrp_msg_t *msg)
 	int rtn;
 	ssize_t msg_len;
 	void *msg_bytes;
+#ifdef TEST_SOCKET_TIMING
+	sst_times_t sst_times;
+#define SST(func) func
+#else
+#define SST(func)
+#endif
 
 	pthread_mutex_lock (&send_mutex);
 	msg_len = wrp_struct_to (msg, WRP_BYTES, &msg_bytes);
@@ -586,6 +603,8 @@ static int wrp_sock_send (wrp_msg_t *msg)
 		pthread_mutex_unlock (&send_mutex);
 		return -1;
 	}
+
+	SST (sst_start_total_timing (&sst_times);)
 
 	if (libpd_options.connect_on_every_send) {
 		send_sock = connect_sender (parodus_url);
@@ -596,11 +615,14 @@ static int wrp_sock_send (wrp_msg_t *msg)
 		}
 	}
 
+	SST (sst_start_send_timing (&sst_times);)
 	rtn = sock_send (send_sock, (const char *)msg_bytes, msg_len);
+	SST (sst_update_send_time (&sst_times);)
 
 	if (libpd_options.connect_on_every_send) {
 		shutdown_socket (&send_sock);
 	}
+	SST (sst_update_total_time (&sst_times);)
 
 	free (msg_bytes);
 	pthread_mutex_unlock (&send_mutex);
@@ -609,11 +631,6 @@ static int wrp_sock_send (wrp_msg_t *msg)
 
 int libparodus_send__ (wrp_msg_t *msg)
 {
-	if (libpd_options.receive && (!auth_received)) {
-		libpd_log (LEVEL_NO_LOGGER, 0, "LIBPARODUS: AUTH not received at send\n");
-		return -1;
-	}
-
 	return wrp_sock_send (msg);
 }
 
@@ -659,11 +676,15 @@ static void wrp_receiver_reconnect (void)
 		sleep (retry_delay);
 		libpd_log (LEVEL_DEBUG, 0, "Retrying receiver connection\n");
 		rcv_sock = connect_receiver (client_url);
-		if (rcv_sock != -1) {
-			reconnect_count++;
-			return;
-		}
+		if (rcv_sock == -1)
+			continue;
+		if (send_registration_msg (selected_service) == -1)
+			continue;
+		break;
 	}
+	auth_received = false;
+	reconnect_count++;
+	return;
 }
 
 static void *wrp_receiver_thread (void *arg __attribute__ ((unused)) )
@@ -674,7 +695,7 @@ static void *wrp_receiver_thread (void *arg __attribute__ ((unused)) )
 	int end_msg_len = strlen(end_msg);
 	char *msg_dest, *msg_service;
 
-	libpd_log (LEVEL_INFO, 0, "Starting wrp receiver thread\n");
+	libpd_log (LEVEL_INFO, 0, "LIBPARODUS: Starting wrp receiver thread\n");
 	while (1) {
 		rtn = sock_receive (&raw_msg);
 		if (rtn != 0) {
@@ -702,16 +723,8 @@ static void *wrp_receiver_thread (void *arg __attribute__ ((unused)) )
 			continue;
 		}
 		if (wrp_msg->msg_type == WRP_MSG_TYPE__AUTH) {
-			if (auth_received)
-				libpd_log (LEVEL_ERROR, 0, "LIBPARODUS: extra AUTH msg received\n");
-			else
-				libpd_log (LEVEL_INFO, 0, "LIBPARODUS: AUTH msg received\n");
+			libpd_log (LEVEL_INFO, 0, "LIBPARODUS: AUTH msg received\n");
 			auth_received = true;
-			wrp_free_struct (wrp_msg);
-			continue;
-		}
-		if (!auth_received) {
-			libpd_log (LEVEL_ERROR, 0, "LIBPARADOS: AUTH msg not received\n");
 			wrp_free_struct (wrp_msg);
 			continue;
 		}
