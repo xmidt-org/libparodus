@@ -90,6 +90,7 @@ static const char *service_name = "iot";
 
 static bool using_mock = false;
 static bool no_mock_send_only_test = false;
+static bool do_send_blocking_test = false;
 
 // libparodus functions to be tested
 extern int flush_wrp_queue (uint32_t delay_ms);
@@ -795,7 +796,8 @@ void test_1(void)
 	CU_ASSERT (libparodus_init_ext (service_name, NULL, "") == 0);
 	CU_ASSERT (send_event_msgs (NULL, &event_num, 5) == 0);
 	CU_ASSERT (libparodus_receive (&wrp_msg, 500) == -3);
-	test_send_blocking ();
+	if (do_send_blocking_test)
+		test_send_blocking ();
 	CU_ASSERT (libparodus_shutdown () == 0);
 
 	if (using_mock) {
@@ -923,6 +925,10 @@ int main( int argc, char **argv __attribute__((unused)) )
 			const char *arg = argv[1];
 			if ((arg[0] == 's') || (arg[0] == 'S'))
 				no_mock_send_only_test = true;
+			if ((arg[0] == 'b') || (arg[0] == 'B')) {
+				using_mock = true;
+				do_send_blocking_test = true;
+			}
 		}
 
     if( CUE_SUCCESS == CU_initialize_registry() ) {
