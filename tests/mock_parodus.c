@@ -679,6 +679,7 @@ static int enqueue_test_msg (const char *trans_uuid, unsigned trans_num,
 	trans_buf = new_str (trans_uuid);
 	insert_number_into_buf (trans_buf, trans_num);
 	new_msg->u.req.transaction_uuid = (void*) trans_buf;
+	new_msg->u.req.content_type = NULL;
 	new_msg->u.req.source = new_str (src);
 	new_msg->u.req.dest = new_str (dest);
 	new_msg->u.req.headers = NULL;
