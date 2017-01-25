@@ -91,6 +91,7 @@ static const char *service_name = "iot";
 static bool using_mock = false;
 static bool no_mock_send_only_test = false;
 static bool do_send_blocking_test = false;
+static bool do_send_disconnect_test = false;
 
 // libparodus functions to be tested
 extern int flush_wrp_queue (uint32_t delay_ms);
@@ -365,6 +366,27 @@ void test_send_blocking (void)
 			break;
 	}
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: End Send Blocking Test\n");
+	sleep (5);
+}
+
+void test_send_disconnect (void)
+{
+	unsigned event_num = 0;
+	unsigned disconnect_time = 15;
+	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: Begin Send Disconnect Test\n");
+	int rtn =	send_event_msg ("---LIBPARODUS---", "---ParodusService---",
+			"---DisconnectReceive ####", disconnect_time, 0);
+	CU_ASSERT (rtn == 0);
+	if (rtn != 0)
+		return;
+	while (true) {
+		event_num++;
+		rtn =	send_event_msg ("---LIBPARODUS---", "---ParodusService---",
+			"---SendBlockTest ####", event_num, 100);
+		if (rtn != 0)
+			break;
+	}
+	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: End Send Disconnect Test\n");
 	sleep (5);
 }
 
@@ -766,7 +788,6 @@ void test_1(void)
 
 	CU_ASSERT (libparodus_receive (&wrp_msg, 500) == -1);
 
-	log_shutdown ();
 	CU_ASSERT (setenv( "LIBPARODUS_LOG_DIRECTORY", ".", 1) == 0);
 	
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: libparodus_init bad parodus ip\n");
@@ -796,6 +817,7 @@ void test_1(void)
 		rtn = open_end_pipe ();
 	}
 
+	log_shutdown ();
 
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: no receive option\n");
 	CU_ASSERT (libparodus_init_ext (service_name, NULL, "") == 0);
@@ -803,6 +825,8 @@ void test_1(void)
 	CU_ASSERT (libparodus_receive (&wrp_msg, 500) == -3);
 	if (do_send_blocking_test)
 		test_send_blocking ();
+	else if (do_send_disconnect_test)
+		test_send_disconnect ();
 	CU_ASSERT (libparodus_shutdown () == 0);
 
 	if (using_mock) {
@@ -933,6 +957,10 @@ int main( int argc, char **argv __attribute__((unused)) )
 			if ((arg[0] == 'b') || (arg[0] == 'B')) {
 				using_mock = true;
 				do_send_blocking_test = true;
+			}
+			if ((arg[0] == 'd') || (arg[0] == 'D')) {
+				using_mock = true;
+				do_send_disconnect_test = true;
 			}
 		}
 

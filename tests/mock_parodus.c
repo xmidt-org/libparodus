@@ -96,6 +96,7 @@ static char end_pipe_name[NAME_BUFLEN];
 static char *end_pipe_msg = END_PIPE_MSG;
 
 static volatile unsigned suspend_receive_secs = 0;
+static volatile unsigned disconnect_receive_secs = 0;
 
 //static char deviceMAC[32]={'\0'}; 
 static volatile bool terminated = false;
@@ -314,6 +315,11 @@ static void *handle_upstream()
 		if (suspend_receive_secs != 0) {
 			sleep (suspend_receive_secs);
 			suspend_receive_secs = 0;
+		} else if (disconnect_receive_secs != 0) {
+			nn_shutdown (sock, 0);
+			sleep (disconnect_receive_secs);
+			disconnect_receive_secs = 0;
+			nn_bind(sock, PARODUS_UPSTREAM );
 		}
 
 		bytes = nn_recv (sock, &buf, NN_MSG, 0);
@@ -1077,6 +1083,19 @@ static int get_trans_num (wrp_msg_t *msg)
 	return (int) trans;
 }
 
+static bool already_suspended_or_disconnected (void)
+{
+	if (suspend_receive_secs != 0) {
+		printf ("MOCKPD: already suspended receive\n");
+		return true;
+	}
+	if (disconnect_receive_secs != 0) {
+		printf ("MOCKPD: already disconnected receive\n");
+		return true;
+	}
+	return false;
+}
+
 static void handleUpstreamEvent (wrp_msg_t *msg)
 {
 	int rtn;
@@ -1088,9 +1107,18 @@ static void handleUpstreamEvent (wrp_msg_t *msg)
 		return;
 	show_wrp_msg (msg);
 	rtn = sscanf (payload, "---SuspendReceive %u", &wait_len);
-	if (rtn != 1)
+	if (rtn == 1) {
+		if (!already_suspended_or_disconnected())
+			suspend_receive_secs = wait_len;	
 		return;
-	suspend_receive_secs = wait_len;	
+	}
+	rtn = sscanf (payload, "---DisconnectReceive %u", &wait_len);
+	if (rtn == 1) {
+		if (!already_suspended_or_disconnected())
+			disconnect_receive_secs = wait_len;	
+		return;
+	}
+	return;
 }
 
 /** To send upstream msgs to server ***/
