@@ -65,7 +65,7 @@ add_dependencies(libtrower-base64 trower-base64)
 ExternalProject_Add(nanomsg
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/_prefix/nanomsg
     GIT_REPOSITORY https://github.com/nanomsg/nanomsg.git
-    #GIT_TAG "096998834451219ee7813d8977f6a4027b0ccb43"
+    GIT_TAG "master"
     CMAKE_ARGS += -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}
 )
 add_library(libnanomsg STATIC SHARED IMPORTED)
