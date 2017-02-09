@@ -40,8 +40,8 @@
 
 typedef struct {
 	int run_state;
-	char parodus_url[URL_SIZE];
-	char client_url[URL_SIZE];
+	const char *parodus_url;
+	const char *client_url;
 	int keep_alive_count;
 	int reconnect_count;
 	libpd_cfg_t cfg;
@@ -85,30 +85,13 @@ static void *wrp_receiver_thread (void *arg);
 
 static void getParodusUrl(__instance_t *inst)
 {
-	const char *parodusUrl = NULL;
-	const char *clientUrl = NULL;
-	const char * envParodus = getenv ("PARODUS_SERVICE_URL");
-	const char * envClient = getenv ("PARODUS_CLIENT_URL");
-  if( envParodus != NULL)
-  {
-    parodusUrl = envParodus;
-  }
-  else
-  {
-    parodusUrl = PARODUS_SERVICE_URL;
-  }
-  snprintf(inst->parodus_url, URL_SIZE,"%s", parodusUrl);
+	inst->parodus_url = inst->cfg.parodus_url;
+	inst->client_url = inst->cfg.client_url;
+	if (NULL == inst->parodus_url)
+		inst->parodus_url = PARODUS_SERVICE_URL;
+	if (NULL == inst->client_url)
+		inst->client_url = PARODUS_CLIENT_URL;
   libpd_log (LEVEL_INFO, 0, "LIBPARODUS: parodus url is  %s\n", inst->parodus_url);
-  
-  if( envClient != NULL)
-  {
-    clientUrl = envClient;
-  }
-  else
-  {
-    clientUrl = PARODUS_CLIENT_URL;
-  }
-  snprintf(inst->client_url, URL_SIZE,"%s", clientUrl);
   libpd_log (LEVEL_INFO, 0, "LIBPARODUS: client url is  %s\n", inst->client_url);
 }
 
@@ -241,7 +224,7 @@ static int send_registration_msg (__instance_t *inst)
 	wrp_msg_t reg_msg;
 	reg_msg.msg_type = WRP_MSG_TYPE__SVC_REGISTRATION;
 	reg_msg.u.reg.service_name = (char *) inst->cfg.service_name;
-	reg_msg.u.reg.url = inst->client_url;
+	reg_msg.u.reg.url = (char *) inst->client_url;
 	return wrp_sock_send (inst, &reg_msg);
 }
 

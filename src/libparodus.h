@@ -29,6 +29,8 @@ typedef struct {
 	const char *service_name;
 	bool receive;
 	int  keepalive_timeout_secs; 
+	const char *parodus_url;
+	const char *client_url;
 	parlibLogHandler log_handler;		// will remove later
 } libpd_cfg_t;
 
