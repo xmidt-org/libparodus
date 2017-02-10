@@ -681,15 +681,13 @@ static int enqueue_test_msg (const char *trans_uuid, unsigned trans_num,
 	if (NULL == new_msg)
 		return -1;
 	printf ("MOCKPD Making req msg\n");
+	memset ((void*)new_msg, 0, sizeof(wrp_msg_t));
 	new_msg->msg_type = WRP_MSG_TYPE__REQ;
 	trans_buf = new_str (trans_uuid);
 	insert_number_into_buf (trans_buf, trans_num);
 	new_msg->u.req.transaction_uuid = (void*) trans_buf;
-	new_msg->u.req.content_type = NULL;
 	new_msg->u.req.source = new_str (src);
 	new_msg->u.req.dest = new_str (dest);
-	new_msg->u.req.headers = NULL;
-	new_msg->u.req.metadata = NULL;
 	new_msg->u.req.payload = new_str (payload);
 	new_msg->u.req.payload_size = strlen (payload) + 1;
 	printf ("MOCKPD Enqueueing req msg to parodus lib\n");

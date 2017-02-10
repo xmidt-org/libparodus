@@ -42,6 +42,9 @@ int current_level = LEVEL_INFO;
 parlibLogHandler     log_handler =NULL;
 
 pthread_mutex_t log_mutex=PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t log_init_mutex=PTHREAD_MUTEX_INITIALIZER;
+
+int init_count = 0;
 
 const char *level_names[3] = {"ERROR", "INFO ", "DEBUG"};
 
@@ -220,10 +223,19 @@ int log_init (const char *log_directory, parlibLogHandler handler)
 {
 	int err;
 
+	pthread_mutex_lock (&log_init_mutex);
+	init_count++;
+	if (init_count > 1) {
+		pthread_mutex_unlock (&log_init_mutex);
+		return 0;
+	}
+
 	log_handler = handler;
 
-	if (NULL != log_handler)
+	if (NULL != log_handler) {
+		pthread_mutex_unlock (&log_init_mutex);
 		return 0;
+	}
 
 	if (NULL == log_directory) {
 		libpd_log_dir = getenv ("LIBPARODUS_LOG_DIRECTORY");
@@ -232,26 +244,42 @@ int log_init (const char *log_directory, parlibLogHandler handler)
 				libpd_log_dir = NULL;
 	} else
 		libpd_log_dir = log_directory;
-	if (NULL == libpd_log_dir)
+	if (NULL == libpd_log_dir) {
+		pthread_mutex_unlock (&log_init_mutex);
 		return 0;
+	}
 	err = mkdir (libpd_log_dir, 0777);
 	if ((err == -1) && (errno != EEXIST)) {
 		libpd_log (LEVEL_NO_LOGGER, errno, "Failed to create directory %s\n", log_directory);
+		init_count--;
+		pthread_mutex_unlock (&log_init_mutex);
 		return -1;
 	}
 	err = my_current_date (current_file_date);
-	if (err != 0)
+	if (err != 0) {
+		init_count--;
+		pthread_mutex_unlock (&log_init_mutex);
 		return err;
+	}
 	libpd_log (LEVEL_NO_LOGGER, 0, "Current date in logger is %8.8s\n", current_file_date);
 	current_file_num = get_last_file_num (current_file_date);
 	if (current_file_num <= 0)
 		current_file_num = 1;
-	return open_file (true);
+	err = open_file (true);
+	pthread_mutex_unlock (&log_init_mutex);
+	if (err != 0)
+		init_count--;
+	return err;
 }
 
 int log_shutdown (void)
 {
-	close_current_file ();
+	pthread_mutex_lock (&log_init_mutex);
+	if (init_count > 0) {
+		close_current_file ();
+		init_count--;
+	}
+	pthread_mutex_unlock (&log_init_mutex);
 	return 0;
 }
 
@@ -307,20 +335,16 @@ int output_log (int level, char *msg_buf, const char *fmt, va_list arg_ptr, int 
 }
 
 
-void libpd_log ( int level, int os_errno, const char *msg, ...)
+void libpd_logv ( int level, int os_errno, const char *msg, va_list arg_ptr)
 {
 	char *pTempChar = NULL;
 	char errbuf[100];
 	const char *err_msg;
 	int error_len, buf_limit, nbytes;
 	
-	va_list arg_ptr; 
-
 	if (level == LEVEL_NO_LOGGER) {
 		if (NULL == log_handler) {
-	    va_start(arg_ptr, msg);
 	    vprintf(msg, arg_ptr);
-	    va_end(arg_ptr);
 			if (os_errno != 0)
 				printf ("%s\n", strerror_r (os_errno, errbuf, 100));
 		}
@@ -333,9 +357,7 @@ void libpd_log ( int level, int os_errno, const char *msg, ...)
 
 		if (NULL == log_handler) {
 			if ((level == LEVEL_ERROR) || (current_level >= level)) {
-				va_start (arg_ptr, msg);
 				output_log (level, pTempChar, msg, arg_ptr, os_errno);
-				va_end (arg_ptr);
 				free(pTempChar);
 				pTempChar = NULL;
 			}
@@ -350,14 +372,11 @@ void libpd_log ( int level, int os_errno, const char *msg, ...)
 			buf_limit -= error_len;
 		}
 
-		va_start(arg_ptr, msg); 
-
 		nbytes = vsnprintf(pTempChar, buf_limit, msg, arg_ptr);
 		if(nbytes < 0)
 		{
 			perror(pTempChar);
 		}
-		va_end(arg_ptr);
 
 		if ((nbytes >= 0) && (os_errno != 0)) {
 			sprintf (pTempChar+nbytes, ": %s\n", err_msg);
@@ -388,15 +407,13 @@ int log_shutdown (void)
 	return 0;
 }
 
-void libpd_log ( int level, int os_errno, const char *msg, ...)
+void libpd_logv ( int level, int os_errno, const char *msg, va_list arg_ptr)
 {
 	char *pTempChar = NULL;
 	char errbuf[100];
 	const char *err_msg;
 	int error_len, buf_limit, nbytes;
 	
-	va_list arg_ptr; 
-
 	pTempChar = (char *)malloc(MSG_BUF_SIZE);
 	if(pTempChar)
 	{
@@ -414,14 +431,11 @@ void libpd_log ( int level, int os_errno, const char *msg, ...)
 			buf_limit -= error_len;
 		}
 
-		va_start(arg_ptr, msg); 
-
 		nbytes = vsnprintf(pTempChar, buf_limit, msg, arg_ptr);
 		if(nbytes < 0)
 		{
 			perror(pTempChar);
 		}
-		va_end(arg_ptr);
 
 		if ((nbytes >= 0) && (os_errno != 0)) {
 			sprintf (pTempChar+nbytes, ": %s\n", err_msg);
@@ -440,4 +454,15 @@ void libpd_log ( int level, int os_errno, const char *msg, ...)
 }
 
 #endif
+
+void libpd_log ( int level, int os_errno, const char *msg, ...)
+{
+	va_list arg_ptr; 
+	va_start(arg_ptr, msg); 
+	libpd_logv (level, os_errno, msg, arg_ptr);
+	va_end (arg_ptr);
+}
+
+
+
 

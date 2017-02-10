@@ -25,30 +25,26 @@
  * to the parodus service.
  */ 
 
-#define LIBPD_DEFAULT_OPT_RECEIVE "R,K65"
-#define LIBPD_OPT_RECEIVE_NO_KEEPALIVE "R"
-#define LIBPD_DEFAULT_OPT_SEND_ONLY ""
+typedef struct {
+	const char *service_name;
+	bool receive;
+	int  keepalive_timeout_secs; 
+	const char *parodus_url;
+	const char *client_url;
+	parlibLogHandler log_handler;		// will remove later
+} libpd_cfg_t;
+
+typedef void *libpd_instance_t;
 
 /**
  * Initialize the parodus wrp interface
  *
- * @param service_name the service name registered for
- * @return 0 on success, valid errno otherwise.
- * @note this is the same as libparodus_init_ext (service_name, log_handler, "R,K65");
- */
-int libparodus_init (const char *service_name, parlibLogHandler log_handler);
-
-/**
- * Initialize the parodus wrp interface
- *
- * @param service_name the service name registered for
- * @param options option string, 
- * 		currently 'R' for receiver, 'C' for connect-on-every-send,
- * 		'K<nn>' for keep-alive with timeout <nn> secs
+ * @param instance pointer to receive instance object that must be provided
+ *   to all subsequent API calls.
+ * @param cfg configuration information: service_name must be provided,
  * @return 0 on success, valid errno otherwise.
  */
-int libparodus_init_ext (const char *service_name, parlibLogHandler log_handler,
-		const char *options);
+int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg);
 
 /**
  *  Receives the next message in the queue that was sent to this service, waiting
@@ -57,6 +53,7 @@ int libparodus_init_ext (const char *service_name, parlibLogHandler log_handler,
  *  @note msg will be set to NULL if no message is present during the time
  *  allotted.
  *
+ *  @param instance instance object
  *  @param msg the pointer to receive the next msg struct
  *  @param ms the number of milliseconds to wait for the next message
  *
@@ -65,29 +62,32 @@ int libparodus_init_ext (const char *service_name, parlibLogHandler log_handler,
  *
  *  @note don't free the msg when return is 2. 
  */
-int libparodus_receive (wrp_msg_t **msg, uint32_t ms);
+int libparodus_receive (libpd_instance_t instance, wrp_msg_t **msg, uint32_t ms);
 
 /**
  * Sends a close message to the receiver
  *
+ *  @param instance instance object
  */
-int libparodus_close_receiver (void);
+int libparodus_close_receiver (libpd_instance_t instance);
 
 /**
  * Shut down the parodus wrp interface
  *
+ * @param instance instance object
 */
-int libparodus_shutdown (void);
+int libparodus_shutdown (libpd_instance_t *instance);
 
 
 /**
  * Send a wrp message to the parodus service
  *
+ * @param instance instance object
  * @param msg wrp message to send
  *
  * @return 0 on success, -1 otherwise.
  */
-int libparodus_send (wrp_msg_t *msg);
+int libparodus_send (libpd_instance_t instance, wrp_msg_t *msg);
 
 
 #endif

@@ -21,6 +21,7 @@ include(CTest)
 
 set(INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/_install)
 set(PREFIX_DIR ${CMAKE_CURRENT_BINARY_DIR}/_prefix)
+set(PATCHES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/patches)
 set(INCLUDE_DIR ${INSTALL_DIR}/include)
 set(LIBRARY_DIR ${INSTALL_DIR}/lib)
 set(LIBRARY_DIR64 ${INSTALL_DIR}/lib64)
@@ -84,7 +85,6 @@ ExternalProject_Add(msgpack
 )
 add_library(libmsgpack STATIC SHARED IMPORTED)
 add_dependencies(libmsgpack msgpack)
-
 
 # wrp-c external dependency
 #-------------------------------------------------------------------------------

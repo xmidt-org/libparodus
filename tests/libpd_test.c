@@ -46,6 +46,7 @@
 #define BAD_RCV_URL  "tcp://127.0.0.1:X006"
 #define BAD_CLIENT_URL "tcp://127.0.0.1:X006"
 #define GOOD_CLIENT_URL "tcp://127.0.0.1:6667"
+#define GOOD_CLIENT_URL2 "tcp://127.0.0.1:6665"
 //#define PARODUS_URL "ipc:///tmp/parodus_server.ipc"
 #define TEST_SEND_URL  "tcp://127.0.0.1:6007"
 #define BAD_SEND_URL   "tcp://127.0.0.1:x007"
@@ -85,41 +86,41 @@ static void *endKeypressHandlerTask();
 
 static pthread_t endKeypressThreadId;
 
-static const char *service_name = "iot";
-//static const char *service_name = "config";
+static const char *service_name1 = "iot";
+static const char *service_name2 = "config";
 
 static bool using_mock = false;
 static bool no_mock_send_only_test = false;
 static bool do_send_blocking_test = false;
 static bool do_send_disconnect_test = false;
+static bool do_multiple_rcv_test = false;
+
+static libpd_instance_t test_instance1;
+static libpd_instance_t test_instance2;
 
 // libparodus functions to be tested
-extern int flush_wrp_queue (uint32_t delay_ms);
-extern int connect_receiver (const char *rcv_url);
+extern void test_set_cfg (libpd_cfg_t *new_cfg);
+extern int flush_wrp_queue (libpd_mq_t wrp_queue, uint32_t delay_ms);
+extern int connect_receiver (const char *rcv_url, int keepalive_timeout_secs);
 extern int connect_sender (const char *send_url);
 extern void shutdown_socket (int *sock);
 
 extern bool is_auth_received (void);
-extern int libparodus_receive__ (wrp_msg_t **msg, uint32_t ms);
+extern int libparodus_receive__ (libpd_instance_t instance, 
+	wrp_msg_t **msg, uint32_t ms);
 
 // libparodus_log functions to be tested
 extern int get_valid_file_num (const char *file_name, const char *date);
 extern int get_last_file_num_in_dir (const char *date, const char *log_dir);
 
 // test helper functions defined in libparodus
-extern bool test_create_wrp_queue (void);
-extern void test_close_wrp_queue (void);
-extern int  test_close_receiver (void);
-extern void test_send_wrp_queue_ok (void);
-extern int libpd_parse_options (const char *option_str );
-extern bool verify_libpd_options (bool rcv, bool connect, int timeout);
+extern bool test_create_wrp_queue (libpd_mq_t *wrp_queue, const char *wrp_queue_name);
+extern void test_close_wrp_queue (libpd_mq_t *wrp_queue);
+extern int  test_close_receiver (libpd_instance_t instance);
+extern void test_send_wrp_queue_ok (libpd_mq_t wrp_queue);
+extern void test_get_counts (libpd_instance_t instance, 
+	int *keep_alive_count, int *reconnect_count);
 
-
-extern const char *wrp_queue_name;
-extern const char *parodus_url;
-extern const char *client_url;
-extern volatile int keep_alive_count;
-extern volatile int reconnect_count;
 
 #ifdef TEST_ENVIRONMENT
 parlibLogHandler test_log_handler = NULL;
@@ -270,7 +271,7 @@ void show_wrp_msg (wrp_msg_t *wrp_msg)
 	return;
 }
 
-void send_reply (wrp_msg_t *wrp_msg)
+void send_reply (libpd_instance_t instance, wrp_msg_t *wrp_msg)
 {
 	size_t i;
 	size_t payload_size = wrp_msg->u.req.payload_size;
@@ -283,7 +284,7 @@ void send_reply (wrp_msg_t *wrp_msg)
 	// Alter the payload
 	for (i=0; i<payload_size; i++)
 		payload[i] = tolower (payload[i]);
-	libparodus_send (wrp_msg);
+	libparodus_send (instance, wrp_msg);
 }
 
 char *new_str (const char *str)
@@ -314,7 +315,8 @@ void insert_number_into_buf (char *buf, unsigned num)
 int send_event_msg (const char *src, const char *dest, 
 	const char *payload, unsigned event_num, unsigned every)
 {
-	int rtn = 0;
+	int rtn1 = 0;
+	int rtn2 = 0;
 	char *payload_buf;
 	wrp_msg_t *new_msg;
 
@@ -324,30 +326,34 @@ int send_event_msg (const char *src, const char *dest,
 	new_msg = malloc (sizeof (wrp_msg_t));
 	if (NULL == new_msg)
 		return -1;
-	if ((every == 0) || ((event_num % every) == 0))
+	if ((every == 0) || (every == 1) || ((event_num % every) == 0))
 		libpd_log (LEVEL_INFO, 0, "Making event msg\n");
+	memset ((void*) new_msg, 0, sizeof(wrp_msg_t));
 	new_msg->msg_type = WRP_MSG_TYPE__EVENT;
-	new_msg->u.event.content_type = NULL;
 	new_msg->u.event.source = new_str (src);
 	new_msg->u.event.dest = new_str (dest);
-	new_msg->u.event.headers = NULL;
-	new_msg->u.event.metadata = NULL;
 	payload_buf = new_str (payload);
 	insert_number_into_buf (payload_buf, event_num);
 	new_msg->u.event.payload = (void*) payload_buf;
 	new_msg->u.event.payload_size = strlen (payload) + 1;
-	if ((every == 0) || ((event_num % every) == 0))
+	if ((every == 0) || (every == 1) || ((event_num % every) == 0))
 		libpd_log (LEVEL_INFO, 0, "Sending event msg %u\n", event_num);
-	rtn = libparodus_send (new_msg);
+	rtn1 = libparodus_send (test_instance1, new_msg);
+	if (every == 1)
+		rtn2 = libparodus_send (test_instance2, new_msg);
 	//printf ("Freeing event msg\n");
 	wrp_free_struct (new_msg);
 	//printf ("Freed event msg\n");
-	return rtn;
+	if (rtn1 != 0)
+		return rtn1;
+	return rtn2;
 }
 
-int send_event_msgs (unsigned *msg_num, unsigned *event_num, int count)
+int send_event_msgs (unsigned *msg_num, unsigned *event_num, int count,
+	bool both)
 {
 	int i;
+	int send_flag = 0;
 	unsigned msg_num_mod;
 
 #ifndef SEND_EVENT_MSGS
@@ -359,10 +365,12 @@ int send_event_msgs (unsigned *msg_num, unsigned *event_num, int count)
 		if (msg_num_mod != 0)
 			return 0;
 	}
+	if (both)
+		send_flag = 1;
 	for (i=0; i<count; i++) {
 		(*event_num)++;
 		if (send_event_msg ("---LIBPARODUS---", "---ParodusService---",
-			"---EventMessagePayload####", *event_num, 0) != 0)
+			"---EventMessagePayload####", *event_num, send_flag) != 0)
 			return -1;
 	}
 	return 0;
@@ -694,59 +702,37 @@ void wait_auth_received (void)
 void test_send_only (void)
 {
 	unsigned event_num = 0;
-
-	CU_ASSERT (libparodus_init_ext (service_name, test_log_handler, "C") == 0);
-	CU_ASSERT (send_event_msgs (NULL, &event_num, 200) == 0);
-	CU_ASSERT (libparodus_shutdown () == 0);
-}
-
-void test_options (void)
-{
-	int rtn;
-
-	rtn = libpd_parse_options (NULL);
-	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, false, 65));
-
-	rtn = libpd_parse_options ("default");
-	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, false, 65));
-
-	rtn = libpd_parse_options ("");
-	CU_ASSERT ( (rtn==0) && verify_libpd_options (false, false, 0));
-
-	rtn = libpd_parse_options ("R,C,K20");
-	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 20));
-
-	rtn = libpd_parse_options ("K200,CR");
-	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 200));
-
-	rtn = libpd_parse_options ("R,C,K");
-	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 65));
-
-	rtn = libpd_parse_options ("R,C");
-	CU_ASSERT ( (rtn==0) && verify_libpd_options (true, true, 0));
-
-	rtn = libpd_parse_options ("C");
-	CU_ASSERT ( (rtn==0) && verify_libpd_options (false, true, 0));
-
-	rtn = libpd_parse_options ("R,C,K2X");
-	CU_ASSERT (rtn!=0);
-
-	rtn = libpd_parse_options ("R,X,K2");
-	CU_ASSERT (rtn!=0);
-
+	libpd_cfg_t cfg1 = {.service_name = service_name1,
+		.receive = false, .keepalive_timeout_secs = 0,
+		.log_handler = test_log_handler};
+	libpd_cfg_t cfg2 = {.service_name = service_name2,
+		.receive = false, .keepalive_timeout_secs = 0,
+		.log_handler = test_log_handler};
+	CU_ASSERT (libparodus_init(&test_instance1, &cfg1) == 0);
+	CU_ASSERT (libparodus_init(&test_instance2, &cfg2) == 0);
+	CU_ASSERT (send_event_msgs (NULL, &event_num, 200, true) == 0);
+	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
+	CU_ASSERT (libparodus_shutdown (&test_instance2) == 0);
 }
 
 void test_1(void)
 {
 	unsigned msgs_received_count = 0;
 	unsigned timeout_cnt = 0;
+	int reconnect_count, keep_alive_count;
 	int rtn;
 	int test_sock;
+	libpd_mq_t test_queue;
 	wrp_msg_t *wrp_msg;
 	unsigned event_num = 0;
 	unsigned msg_num = 0;
-	const char *parodus_url_orig = GOOD_PARODUS_URL;
-	const char *client_url_orig = GOOD_CLIENT_URL;
+	libpd_instance_t current_instance;
+	libpd_cfg_t cfg1 = {.service_name = service_name1,
+		.receive = true, .keepalive_timeout_secs = 0,
+		.log_handler = test_log_handler};
+	libpd_cfg_t cfg2 = {.service_name = service_name2,
+		.receive = true, .keepalive_timeout_secs = 0,
+		.log_handler = test_log_handler};
 
 	test_time ();
 #ifdef TEST_ENVIRONMENT
@@ -756,18 +742,18 @@ void test_1(void)
 
 	CU_ASSERT_FATAL (log_init (".", test_log_handler) == 0);
 	test_queues ();
-	test_options ();
 
+	//test_set_cfg (&cfg);
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: test connect receiver, good IP\n");
-	test_sock = connect_receiver (TEST_RCV_URL);
+	test_sock = connect_receiver (TEST_RCV_URL, 20);
 	CU_ASSERT (test_sock != -1) ;
 	if (test_sock != -1)
 		shutdown_socket(&test_sock);
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: test connect receiver, bad IP\n");
-	test_sock = connect_receiver (BAD_RCV_URL);
+	test_sock = connect_receiver (BAD_RCV_URL, 0);
 	CU_ASSERT (test_sock == -1);
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: test connect receiver, good IP\n");
-	test_sock = connect_receiver (TEST_RCV_URL);
+	test_sock = connect_receiver (TEST_RCV_URL, 20);
 	CU_ASSERT (test_sock != -1) ;
 	if (test_sock != -1)
 		shutdown_socket(&test_sock);
@@ -781,49 +767,48 @@ void test_1(void)
 	CU_ASSERT (test_sock == -1);
 
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: test create wrp queue\n");
-	CU_ASSERT (test_create_wrp_queue () == 0);
+	CU_ASSERT (test_create_wrp_queue (&test_queue, "/TEST_QUEUE") == 0);
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: test libparodus receive good\n");
-	test_send_wrp_queue_ok ();
-	CU_ASSERT (libparodus_receive__ (&wrp_msg, 500) == 0);
+	test_send_wrp_queue_ok (test_queue);
+	CU_ASSERT (libparodus_receive__ (test_queue, &wrp_msg, 500) == 0);
 	wrp_free_struct (wrp_msg);
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: test wrp_flush_queue\n");
-	test_send_wrp_queue_ok ();
-	test_send_wrp_queue_ok ();
-	test_send_wrp_queue_ok ();
-	CU_ASSERT (flush_wrp_queue (500) == 3);
-	CU_ASSERT (flush_wrp_queue (500) == 0);
+	test_send_wrp_queue_ok (test_queue);
+	test_send_wrp_queue_ok (test_queue);
+	test_send_wrp_queue_ok (test_queue);
+	CU_ASSERT (flush_wrp_queue (test_queue, 500) == 3);
+	CU_ASSERT (flush_wrp_queue (test_queue, 500) == 0);
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: test wrp_flush_queue with close msg\n");
-	test_send_wrp_queue_ok ();
-	test_send_wrp_queue_ok ();
-	test_close_receiver ();
-	CU_ASSERT (flush_wrp_queue (500) == 3);
+	test_send_wrp_queue_ok (test_queue);
+	test_send_wrp_queue_ok (test_queue);
+	test_close_receiver (test_queue);
+	CU_ASSERT (flush_wrp_queue (test_queue, 500) == 3);
 
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: test libparodus receive timeout\n");
-	CU_ASSERT (libparodus_receive__ (&wrp_msg, 500) == 1);
-	CU_ASSERT (test_close_receiver() == 0);
+	CU_ASSERT (libparodus_receive__ (test_queue, &wrp_msg, 500) == 1);
+	CU_ASSERT (test_close_receiver (test_queue) == 0);
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: test libparodus receive close msg\n");
-	rtn = libparodus_receive__ (&wrp_msg, 500);
+	rtn = libparodus_receive__ (test_queue, &wrp_msg, 500);
 	if (rtn != 2) {
 		libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: expected receive rtn==2 after close, got %d\n", rtn);
 	}
 	CU_ASSERT (rtn == 2);
 
-	test_close_wrp_queue ();
+	test_close_wrp_queue (&test_queue);
 
-	CU_ASSERT (libparodus_receive (&wrp_msg, 500) == -1);
+	CU_ASSERT (libparodus_receive__ (test_queue, &wrp_msg, 500) == -1);
 
 	CU_ASSERT (setenv( "LIBPARODUS_LOG_DIRECTORY", ".", 1) == 0);
 	
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: libparodus_init bad parodus ip\n");
-	CU_ASSERT (setenv( "PARODUS_SERVICE_URL", BAD_PARODUS_URL, 1) == 0);
-	CU_ASSERT (libparodus_init (service_name, test_log_handler) != 0);
-	CU_ASSERT (setenv( "PARODUS_SERVICE_URL", parodus_url_orig, 1) == 0);
-	CU_ASSERT (setenv( "PARODUS_CLIENT_URL", BAD_CLIENT_URL, 1) == 0);
+	cfg1.receive = true;
+	cfg1.parodus_url = BAD_PARODUS_URL;
+	CU_ASSERT (libparodus_init (&test_instance1, &cfg1) == -1);
+	cfg1.parodus_url = GOOD_PARODUS_URL;
+	cfg1.client_url = BAD_CLIENT_URL;
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: libparodus_init bad client url\n");
-	CU_ASSERT (libparodus_init_ext (service_name, test_log_handler, NULL) != 0);
-	CU_ASSERT (setenv( "PARODUS_CLIENT_URL", client_url_orig, 1) == 0);
-	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: libparodus_init bad options\n");
-	CU_ASSERT (libparodus_init_ext (service_name, test_log_handler, "X") == EINVAL);
+	CU_ASSERT (libparodus_init(&test_instance1, &cfg1) == -1);
+	cfg1.client_url = GOOD_CLIENT_URL;
 
 	if (no_mock_send_only_test) {
 		test_send_only ();
@@ -844,64 +829,84 @@ void test_1(void)
 	log_shutdown ();
 
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: no receive option\n");
-	CU_ASSERT (libparodus_init_ext (service_name, test_log_handler, "") == 0);
-	CU_ASSERT (send_event_msgs (NULL, &event_num, 5) == 0);
-	CU_ASSERT (libparodus_receive (&wrp_msg, 500) == -3);
+	cfg1.receive = false;
+	CU_ASSERT (libparodus_init(&test_instance1, &cfg1) == 0);
+	CU_ASSERT (send_event_msgs (NULL, &event_num, 5, false) == 0);
+	CU_ASSERT (libparodus_receive (test_instance1, &wrp_msg, 500) == -3);
 	if (do_send_blocking_test)
 		test_send_blocking ();
 	else if (do_send_disconnect_test)
 		test_send_disconnect ();
-	CU_ASSERT (libparodus_shutdown () == 0);
+	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
 
+	cfg1.receive = true;
 	if (using_mock) {
-		rtn = libparodus_init_ext (service_name, test_log_handler, "R,C,K20");
-	} else {
-		//rtn = libparodus_init_ext (service_name, NULL, "R,C");
-		rtn = libparodus_init (service_name, test_log_handler);
+		cfg1.keepalive_timeout_secs = 20;
 	}
+	rtn = libparodus_init(&test_instance1, &cfg1);
 	CU_ASSERT_FATAL (rtn == 0);
-	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: libparodus_init successful\n");
+	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: libparodus_init 1 successful\n");
 	initEndKeypressHandler ();
 
 	//wait_auth_received ();
 	//if (is_auth_received()) {
 		libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: Test invalid wrp message\n");
 		wrp_msg = (wrp_msg_t *) "*** Invalid WRP message\n";
-		CU_ASSERT (libparodus_send (wrp_msg) != 0);
+		CU_ASSERT (libparodus_send (test_instance1, wrp_msg) != 0);
 	//}
-
+	current_instance = test_instance1;
+	if (do_multiple_rcv_test)  {
+		cfg2.receive = true;
+		cfg2.client_url = GOOD_CLIENT_URL2;
+		rtn = libparodus_init(&test_instance2, &cfg2);
+		CU_ASSERT_FATAL (rtn == 0);
+		libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: libparodus_init 2 successful\n");
+		current_instance = test_instance2;
+	}
 	libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: starting msg receive loop\n");
 	while (true) {
-		rtn = libparodus_receive (&wrp_msg, 2000);
+		if (do_multiple_rcv_test) {
+			if (current_instance == test_instance1)
+				current_instance = test_instance2;
+			else
+				current_instance = test_instance1;
+		}
+		rtn = libparodus_receive (current_instance, &wrp_msg, 2000);
 		if (rtn == 1) {
 			libpd_log (LEVEL_INFO, 0, "LIBPD_TEST: Timed out waiting for msg\n");
+			if (current_instance != test_instance1)
+				continue;
 #ifdef MOCK_MSG_COUNT
 			if (using_mock && ((msgs_received_count+1) >= MOCK_MSG_COUNT)) {
 				timeout_cnt++;
 				if (timeout_cnt >= 6) {
-					libparodus_close_receiver ();
+					libparodus_close_receiver (test_instance1);
 					continue;
 				}
 			}
 #endif
+			test_get_counts (test_instance1, &keep_alive_count, &reconnect_count);
 			if ((reconnect_count == 0) && (msgs_received_count > 0))
-				if (send_event_msgs (&msg_num, &event_num, 5) != 0)
+				if (send_event_msgs (&msg_num, &event_num, 5, false) != 0)
 					break;
 			continue;
 		}
 		if (rtn != 0)
 			break;
 		show_wrp_msg (wrp_msg);
-		timeout_cnt = 0;
-		msgs_received_count++;
 		if (wrp_msg->msg_type == WRP_MSG_TYPE__REQ)
-			send_reply (wrp_msg);
+			send_reply (current_instance, wrp_msg);
 		wrp_free_struct (wrp_msg);
-		if (send_event_msgs (&msg_num, &event_num, 5) != 0)
-			break;
+		if (current_instance == test_instance1) {
+			timeout_cnt = 0;
+			msgs_received_count++;
+			if (send_event_msgs (&msg_num, &event_num, 5, false) != 0)
+				break;
+		}
 	}
 	if (using_mock) {
 		libpd_log (LEVEL_INFO, 0, "Keep alive msgs received %d\n", keep_alive_count);
+		test_get_counts (test_instance1, &keep_alive_count, &reconnect_count);
 		CU_ASSERT (keep_alive_count == NUM_KEEP_ALIVE_MSGS);
 		CU_ASSERT (reconnect_count == 1);
 #ifdef MOCK_MSG_COUNT
@@ -918,7 +923,10 @@ void test_1(void)
 		}
 	}
 	libpd_log (LEVEL_INFO, 0, "Messages received %u\n", msgs_received_count);
-	CU_ASSERT (libparodus_shutdown () == 0);
+	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
+	if (do_multiple_rcv_test) {
+		CU_ASSERT (libparodus_shutdown (&test_instance2) == 0);
+	}
 }
 
 /*
@@ -953,7 +961,7 @@ static void *endKeypressHandlerTask()
 			break;
 		}
 	}
-	libparodus_close_receiver ();
+	libparodus_close_receiver (test_instance1);
 	return NULL;
 }
 
@@ -978,6 +986,8 @@ int main( int argc, char **argv __attribute__((unused)) )
 			const char *arg = argv[1];
 			if ((arg[0] == 's') || (arg[0] == 'S'))
 				no_mock_send_only_test = true;
+			if ((arg[0] == 'm') || (arg[0] == 'M'))
+				do_multiple_rcv_test = true;
 			if ((arg[0] == 'b') || (arg[0] == 'B')) {
 				using_mock = true;
 				do_send_blocking_test = true;

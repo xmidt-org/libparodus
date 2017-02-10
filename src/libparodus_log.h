@@ -22,7 +22,7 @@
 //		a log_handler function must be provided.
 // When compiled with TEST_ENVIRONMENT,
 //		a log handler function can, but need not be provided.
-//#define TEST_ENVIRONMENT 1
+#define TEST_ENVIRONMENT 1
 
 #ifdef TEST_ENVIRONMENT
 #define LEVEL_NO_LOGGER 99
