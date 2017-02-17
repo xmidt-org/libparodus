@@ -118,6 +118,20 @@ bool is_auth_received (libpd_instance_t instance)
 	return inst->auth_received;
 }
 
+#define SHUTDOWN_SOCKET(sock) \
+	if ((sock) != -1) \
+		nn_shutdown ((sock), 0); \
+	(sock) = 0;
+
+void shutdown_socket (int *sock)
+{
+	if (*sock != -1) {
+		nn_shutdown (*sock, 0);
+		nn_close (*sock);
+	}
+	*sock = -1;
+}
+
 /**
  * Open receive socket and bind to it.
  */
@@ -139,29 +153,18 @@ int connect_receiver (const char *rcv_url, int keepalive_timeout_secs)
 		if (nn_setsockopt (sock, NN_SOL_SOCKET, NN_RCVTIMEO, 
 					&rcv_timeout, sizeof (rcv_timeout)) < 0) {
 			libpd_log (LEVEL_ERROR, errno, "Unable to set socket timeout: %s\n", rcv_url);
+			shutdown_socket (&sock);
  			return -1;
 		}
 	}
   if (nn_bind (sock, rcv_url) < 0) {
 		libpd_log (LEVEL_ERROR, errno, "Unable to bind to receive socket %s\n", rcv_url);
+		shutdown_socket (&sock);
 		return -1;
 	}
 	return sock;
 }
 
-#define SHUTDOWN_SOCKET(sock) \
-	if ((sock) != -1) \
-		nn_shutdown ((sock), 0); \
-	(sock) = 0;
-
-void shutdown_socket (int *sock)
-{
-	if (*sock != -1) {
-		nn_shutdown (*sock, 0);
-		nn_close (*sock);
-	}
-	*sock = -1;
-}
 
 /**
  * Open send socket and connect to it.
@@ -182,11 +185,13 @@ int connect_sender (const char *send_url)
 	if (nn_setsockopt (sock, NN_SOL_SOCKET, NN_SNDTIMEO, 
 				&send_timeout, sizeof (send_timeout)) < 0) {
 		libpd_log (LEVEL_ERROR, errno, "Unable to set socket timeout: %s\n", send_url);
+		shutdown_socket (&sock);
  		return -1;
 	}
   if (nn_connect (sock, send_url) < 0) {
 		libpd_log (LEVEL_ERROR, errno, "Unable to connect to send socket %s\n",
 			send_url);
+		shutdown_socket (&sock);
 		return -1;
 	}
 	return sock;
