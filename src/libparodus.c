@@ -112,6 +112,12 @@ static __instance_t *make_new_instance (libpd_cfg_t *cfg)
 	return inst;
 }
 
+static void destroy_instance (__instance_t *inst)
+{
+	pthread_mutex_destroy (&inst->send_mutex);
+	free (inst);
+}
+
 bool is_auth_received (libpd_instance_t instance)
 {
 	__instance_t *inst = (__instance_t *) instance;
@@ -240,6 +246,24 @@ static void show_options (libpd_cfg_t *cfg)
 		cfg->receive, cfg->keepalive_timeout_secs);
 }
 
+static void shutdown_inst (__instance_t *inst, const char *opt_str)
+{
+	int i;
+	char c;
+
+	for (i=0; (c=opt_str[i]) != 0; i++) {
+		if (c == 'r')
+			shutdown_socket (&inst->rcv_sock);
+		else if (c == 'q')
+			libpd_qdestroy (&inst->wrp_queue, &wrp_free);
+		else if (c == 's')
+			shutdown_socket(&inst->send_sock);
+		else if (c == 't')
+			shutdown_socket(&inst->stop_rcv_sock);
+	}
+	destroy_instance (inst);
+}
+
 int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
 {
 	bool need_to_send_registration;
@@ -255,20 +279,23 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
 	err = log_init (NULL, inst->cfg.log_handler);
 	if (err != 0) {
 		libpd_log (LEVEL_NO_LOGGER, 0, "Failed to init logger\n");
+		shutdown_inst (inst, "");
 		return -1;
 	}
 	show_options (libpd_cfg);
 	if (inst->cfg.receive) {
 		libpd_log (LEVEL_INFO, 0, "LIBPARODUS: connecting receiver to %s\n",  inst->client_url);
 		inst->rcv_sock = connect_receiver (inst->client_url, inst->cfg.keepalive_timeout_secs);
-		if (inst->rcv_sock == -1) 
+		if (inst->rcv_sock == -1) {
+			shutdown_inst (inst, ""); 
 			return -1;
+		}
 	}
 	if (!inst->connect_on_every_send) {
 		libpd_log (LEVEL_INFO, 0, "LIBPARODUS: connecting sender to %s\n", inst->parodus_url);
 		inst->send_sock = connect_sender (inst->parodus_url);
 		if (inst->send_sock == -1) {
-			shutdown_socket(&inst->rcv_sock);
+			shutdown_inst (inst, "r"); 
 			return -1;
 		}
 	}
@@ -276,25 +303,19 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
 		// We use the stop_rcv_sock to send a stop msg to our own receive socket.
 		inst->stop_rcv_sock = connect_sender (inst->client_url);
 		if (inst->stop_rcv_sock == -1) {
-			shutdown_socket(&inst->rcv_sock);
-			shutdown_socket(&inst->send_sock);
+			shutdown_inst (inst, "rs"); 
 			return -1;
 		}
 		libpd_log (LEVEL_INFO, 0, "LIBPARODUS: Opened sockets\n");
 		err = libpd_qcreate (&inst->wrp_queue, inst->wrp_queue_name, WRP_QUEUE_SIZE);
 		if (err != 0) {
-			shutdown_socket(&inst->rcv_sock);
-			shutdown_socket(&inst->send_sock);
-			shutdown_socket(&inst->stop_rcv_sock);
+			shutdown_inst (inst, "rst"); 
 			return -1;
 		}
 		libpd_log (LEVEL_INFO, 0, "LIBPARODUS: Created queues\n");
 		if (create_thread (&inst->wrp_receiver_tid, wrp_receiver_thread,
 				inst) != 0) {
-			shutdown_socket(&inst->rcv_sock);
-			libpd_qdestroy (&inst->wrp_queue, &wrp_free);
-			shutdown_socket(&inst->send_sock);
-			shutdown_socket(&inst->stop_rcv_sock);
+			shutdown_inst (inst, "rqst"); 
 			return -1;
 		}
 	}
@@ -368,6 +389,7 @@ int libparodus_shutdown (libpd_instance_t *instance)
 
 	if (RUN_STATE_RUNNING != inst->run_state) {
 		libpd_log (LEVEL_NO_LOGGER, 0, "LIBPARODUS: not running at shutdown\n");
+		destroy_instance (inst);
 		return -1;
 	}
 
@@ -394,6 +416,7 @@ int libparodus_shutdown (libpd_instance_t *instance)
 	inst->run_state = 0;
 	inst->auth_received = false;
 	log_shutdown ();
+	destroy_instance (inst);
 	return 0;
 }
 
