@@ -35,7 +35,7 @@ int get_current_time (struct timeval *tv, struct tm *split_time)
 	time_t secs;
 	int err = gettimeofday (tv, NULL);
 	if (err != 0) {
-		libpd_log (LEVEL_NO_LOGGER, errno, "Error getting time of day: ");
+		libpd_log_err (LEVEL_ERROR, errno, ("Error getting time of day\n"));
 		return err;
 	}
 	secs = (time_t) tv->tv_sec;
@@ -132,7 +132,7 @@ int get_expire_time (uint32_t ms, struct timespec *ts)
 	struct timeval tv;
 	int err = gettimeofday (&tv, NULL);
 	if (err != 0) {
-		libpd_log (LEVEL_ERROR, errno, "Error getting time of day\n");
+		libpd_log_err (LEVEL_ERROR, errno, ("Error getting time of day\n"));
 		return err;
 	}
 	tv.tv_sec += ms/1000;
@@ -162,7 +162,7 @@ int sst_err;
 
 void sst_init_totals (void)
 {
-	libpd_log (LEVEL_INFO, 0, "LIBPARODUS Init Socket Timing\n");
+	libpd_log (LEVEL_INFO, ("LIBPARODUS Init Socket Timing\n"));
 	sst_totals.count = 0;
 	sst_totals.total_time.tv_sec = 0;
 	sst_totals.total_time.tv_usec = 0;
@@ -244,10 +244,10 @@ int sst_display_totals (void)
 {
 	unsigned long con_send_discon_avg, send_avg, diff_avg;
 
-	libpd_log (LEVEL_INFO, 0, "LIBPARODUS Socket Timing Totals\n");
-	libpd_log (LEVEL_INFO, 0, " Count %u, Total Time (%lu:%lu), Send Time (%lu:%lu)\n",
+	libpd_log (LEVEL_INFO, ("LIBPARODUS Socket Timing Totals\n"));
+	libpd_log (LEVEL_INFO, (" Count %u, Total Time (%lu:%lu), Send Time (%lu:%lu)\n",
 		sst_totals.count, sst_totals.total_time.tv_sec, sst_totals.total_time.tv_usec,
-		sst_totals.send_time.tv_sec, sst_totals.send_time.tv_usec);
+		sst_totals.send_time.tv_sec, sst_totals.send_time.tv_usec));
 	if (sst_totals.count == 0)
 		return sst_err;
 	con_send_discon_avg = ((sst_totals.total_time.tv_sec * 1000lu) +
@@ -258,8 +258,8 @@ int sst_display_totals (void)
 	diff_avg = ((sst_totals.total_time.tv_sec * 1000lu) +
 		sst_totals.total_time.tv_usec) / sst_totals.count;
 
-	libpd_log (LEVEL_INFO, 0, " ConSendDiscon Avg %lu, Send Avg %lu, Diff Avg %lu\n",
-		con_send_discon_avg, send_avg, diff_avg);
+	libpd_log (LEVEL_INFO, (" ConSendDiscon Avg %lu, Send Avg %lu, Diff Avg %lu\n",
+		con_send_discon_avg, send_avg, diff_avg));
 	return sst_err;
 }
 
