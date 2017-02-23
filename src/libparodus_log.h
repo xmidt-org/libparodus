@@ -18,7 +18,7 @@
 
 // if TEST_ENVIRONMENT is not defined, then the macros libpd_log and libpd_log_err
 // generate nothing
-#define TEST_ENVIRONMENT 1
+//#define TEST_ENVIRONMENT 1
 
 #ifndef TEST_ENVIRONMENT
 #define libpd_log(level,msg)

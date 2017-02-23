@@ -58,6 +58,12 @@ typedef enum {
 	/** 
 	 * @brief Error on libparodus_init
 	 * error connecting receiver
+	 * null url specified
+	 */
+	LIBPD_ERR_INIT_RCV_NULL = -0x42001,
+	/** 
+	 * @brief Error on libparodus_init
+	 * error connecting receiver
 	 * error creating socket
 	 */
 	LIBPD_ERR_INIT_RCV_CR = -0x42040,
