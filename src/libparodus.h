@@ -391,8 +391,8 @@ typedef enum {
  * @param instance pointer to receive instance object that must be provided
  *   to all subsequent API calls.
  * @param cfg configuration information: service_name must be provided,
- * @param exterr extra error info
- * @return 0 on success, valid libpd_error_t otherwise. 
+ * @param exterr pointer to variable, which, if not null, will receive extra error info
+ * @return 0 on success, valid libpd_error_t (LIBPD_ERR_INIT_ ...)  otherwise. 
  */
 int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg, int *exterr);
 
@@ -408,7 +408,7 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg, int *ex
  *  @param ms the number of milliseconds to wait for the next message
  *
  *  @return 0 on success, 2 if closed msg received, 1 if timed out, 
- *    else error code libpd_error_t
+ *    else error code libpd_error_t (LIBPD_ERR_RCV_ ...)
  *
  *  @note don't free the msg when return is 2. 
  */
@@ -418,7 +418,7 @@ int libparodus_receive (libpd_instance_t instance, wrp_msg_t **msg, uint32_t ms)
  * Sends a close message to the receiver
  *
  *  @param instance instance object
- *  @return 0 on success,  else error code libpd_error_t
+ *  @return 0 on success,  else error code libpd_error_t (LIBPD_ERR_CLOSE_RCV_ ...)
  */
 int libparodus_close_receiver (libpd_instance_t instance);
 
@@ -436,7 +436,7 @@ int libparodus_shutdown (libpd_instance_t *instance);
  * @param instance instance object
  * @param msg wrp message to send
  *
- * @return 0 on success, error code libpd_error_t otherwise
+ * @return 0 on success, error code libpd_error_t otherwise (LIBPD_ERR_SEND_ ..)
  */
 int libparodus_send (libpd_instance_t instance, wrp_msg_t *msg);
 

@@ -33,20 +33,19 @@
 //#define CLIENT_URL "ipc:///tmp/parodus_client.ipc"
 
 #define DEFAULT_KEEPALIVE_TIMEOUT_SECS 65
-#define DEFAULT_OPTIONS_STR "R,K65"
 
 #define URL_SIZE 32
 #define QNAME_SIZE 50
 
 typedef struct {
 	int run_state;
-	int exterr;
+	int exterr; // exterr of last api call
 	const char *parodus_url;
 	const char *client_url;
 	int keep_alive_count;
 	int reconnect_count;
 	libpd_cfg_t cfg;
-	bool connect_on_every_send;
+	bool connect_on_every_send; // always false, currently
 	int rcv_sock;
 	int stop_rcv_sock;
 	int send_sock;
@@ -375,9 +374,11 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg, int *ex
 {
 	bool need_to_send_registration;
 	int err;
+	int oserr = 0;
 	__instance_t *inst = make_new_instance (libpd_cfg);
- 
-	*exterr = 0;
+#define SETEXTERR(err) if (NULL != exterr) *exterr = (err) 
+	
+	SETEXTERR(0);
 	if (NULL == inst) {
 		libpd_log (LEVEL_ERROR, ("LIBPARODUS: unable to allocate new instance\n"));
 		return LIBPD_ERR_INIT_INST;
@@ -387,34 +388,38 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg, int *ex
 	show_options (libpd_cfg);
 	if (inst->cfg.receive) {
 		libpd_log (LEVEL_INFO, ("LIBPARODUS: connecting receiver to %s\n",  inst->client_url));
-		err = connect_receiver (inst->client_url, inst->cfg.keepalive_timeout_secs, exterr);
+		err = connect_receiver (inst->client_url, inst->cfg.keepalive_timeout_secs, &oserr);
 		if (err < 0) {
-			shutdown_inst (inst, ""); 
+			shutdown_inst (inst, "");
+			SETEXTERR(oserr); 
 			return LIBPD_ERR_INIT_RCV + err;
 		}
 		inst->rcv_sock = err;
 	}
 	if (!inst->connect_on_every_send) {
 		libpd_log (LEVEL_INFO, ("LIBPARODUS: connecting sender to %s\n", inst->parodus_url));
-		err = connect_sender (inst->parodus_url, exterr);
+		err = connect_sender (inst->parodus_url, &oserr);
 		if (err < 0) {
-			shutdown_inst (inst, "r"); 
+			shutdown_inst (inst, "r");
+			SETEXTERR (oserr); 
 			return LIBPD_ERR_INIT_SEND + err;
 		}
 		inst->send_sock = err;
 	}
 	if (inst->cfg.receive) {
 		// We use the stop_rcv_sock to send a stop msg to our own receive socket.
-		err = connect_sender (inst->client_url, exterr);
+		err = connect_sender (inst->client_url, &oserr);
 		if (err < 0) {
-			shutdown_inst (inst, "rs"); 
+			shutdown_inst (inst, "rs");
+			SETEXTERR (oserr); 
 			return LIBPD_ERR_INIT_TERMSOCK + err;
 		}
 		inst->stop_rcv_sock = err;
 		libpd_log (LEVEL_INFO, ("LIBPARODUS: Opened sockets\n"));
-		err = libpd_qcreate (&inst->wrp_queue, inst->wrp_queue_name, WRP_QUEUE_SIZE, exterr);
+		err = libpd_qcreate (&inst->wrp_queue, inst->wrp_queue_name, WRP_QUEUE_SIZE, &oserr);
 		if (err != 0) {
-			shutdown_inst (inst, "rst"); 
+			shutdown_inst (inst, "rst");
+			SETEXTERR (oserr); 
 			return LIBPD_ERR_INIT_QUEUE + err;
 		}
 		libpd_log (LEVEL_INFO, ("LIBPARODUS: Created queues\n"));
@@ -569,7 +574,7 @@ static wrp_msg_t *make_closed_msg (void)
 // returns 0 OK
 //  2 closed msg received
 //  1 timed out
-// -1 mq_receive error
+//  LIBPD_ERR_RCV_ ... on error
 int libparodus_receive__ (libpd_mq_t wrp_queue, wrp_msg_t **msg, 
 	uint32_t ms, int *exterr)
 {
@@ -598,7 +603,7 @@ int libparodus_receive__ (libpd_mq_t wrp_queue, wrp_msg_t **msg,
 // returns 0 OK
 //  2 closed msg received
 //  1 timed out
-// LIBPD_ERR_RCV_CFG no receive option
+// LIBPD_ERR_RCV_ ... on error
 int libparodus_receive (libpd_instance_t instance, wrp_msg_t **msg, uint32_t ms)
 {
 	__instance_t *inst = (__instance_t *) instance;

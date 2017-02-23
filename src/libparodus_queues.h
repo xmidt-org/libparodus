@@ -87,17 +87,51 @@ typedef enum {
 } libpd_qerror_t;
 
 
+/**
+ * Create a queue
+ *
+ * @param mq pointer to receive queue object that must be provided
+ *   to all subsequent API calls.
+ * @param queue_name name of queue
+ * @param max_msgs maximum number of messages queue can hold
+ * @param exterr extra error info
+ * @return 0 on success, valid libpd_qerror_t (LIBPD_QERR_CREATE_ ...)  otherwise. 
+ */
 int libpd_qcreate (libpd_mq_t *mq, const char *queue_name, 
 	unsigned max_msgs, int *exterr);
 
 typedef void free_msg_func_t (void *msg);
 
+/**
+ * Destroy queue
+ *
+ * @param mq pointer to queue object
+ * @param free_msg_func pointer to function that frees the queue. can be 'free'
+ * @return always returns 0
+ */
 int libpd_qdestroy (libpd_mq_t *mq, free_msg_func_t *free_msg_func);
 
-// returns 0 on success, 1 on timeout, or other error
+/**
+ * Send message on queue
+ *
+ * @param mq queue object
+ * @param msg pointer to message to be sent
+ * @param timeout_ms maximum wait time for message to be placed on the queue
+ * @param exterr extra error info
+ * @return 0 on success, valid libpd_qerror_t (LIBPD_QERR_SEND_ ...)  otherwise. 
+ */
 int libpd_qsend (libpd_mq_t mq, void *msg, unsigned timeout_ms, int *exterr);
 
-// returns 0 on success, 1 on timeout, or other error
+/**
+ * Receive message from queue
+ *
+ * @param mq queue object  
+ * @param msg pointer to variable that will receive message pointer
+ *    this message must be freed
+ * @param timeout_ms maximum wait time for message to be placed on the queue
+ * @param exterr extra error info
+ * @return 0 on success, valid libpd_qerror_t (LIBPD_QERR_RCV_ ...)  otherwise. 
+ */
 int libpd_qreceive (libpd_mq_t mq, void **msg, unsigned timeout_ms, int *exterr);
 
 #endif
