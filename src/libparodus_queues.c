@@ -1,13 +1,19 @@
-/******************************************************************************
-   Copyright [2016] [Comcast]
-
-   Comcast Proprietary and Confidential
-
-   All Rights Reserved.
-
-   Unauthorized copying of this file, via any medium is strictly prohibited
-
-******************************************************************************/
+ /**
+  * Copyright 2016 Comcast Cable Communications Management, LLC
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+  * You may obtain a copy of the License at
+  *
+  *     http://www.apache.org/licenses/LICENSE-2.0
+  *
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  *
+ */
 
 #include "libparodus_queues.h"
 #include "libparodus_time.h"
@@ -29,27 +35,29 @@ typedef struct queue {
 	int tail_index;
 } queue_t;
 
-int libpd_qcreate (libpd_mq_t *mq, const char *queue_name, unsigned max_msgs)
+int libpd_qcreate (libpd_mq_t *mq, const char *queue_name, 
+	unsigned max_msgs, int *exterr)
 {
 	int err;
 	unsigned array_size;
 	queue_t *newq;
 
+	*exterr = 0;
 	*mq = NULL;
 	if (max_msgs < 2) {
-		libpd_log (LEVEL_ERROR, 0, 
-			"Error creating queue %s: max_msgs(%u) should be at least 2\n",
-			queue_name, max_msgs);
-		return EINVAL;
+		libpd_log (LEVEL_ERROR, 
+			("Error creating queue %s: max_msgs(%u) should be at least 2\n",
+			queue_name, max_msgs));
+		return LIBPD_QERR_CREATE_INVAL_SZ;
 	}
 		
 	array_size = max_msgs * sizeof(void*);
 	newq = (queue_t*) malloc (sizeof(queue_t));
 
 	if (NULL == newq) {
-		libpd_log (LEVEL_ERROR, 0, "Unable to allocate memory(1) for queue %s\n",
-			queue_name);
-		return ENOMEM;
+		libpd_log (LEVEL_ERROR, ("Unable to allocate memory(1) for queue %s\n",
+			queue_name));
+		return LIBPD_QERR_CREATE_ALLOC_1;
 	}
 
 	newq->queue_name = queue_name;
@@ -60,40 +68,43 @@ int libpd_qcreate (libpd_mq_t *mq, const char *queue_name, unsigned max_msgs)
 
 	err = pthread_mutex_init (&newq->mutex, NULL);
 	if (err != 0) {
-		libpd_log (LEVEL_ERROR, err, "Error creating mutex for queue %s\n",
-			queue_name);
+		*exterr = err;
+		libpd_log_err (LEVEL_ERROR, err, ("Error creating mutex for queue %s\n",
+			queue_name));
 		free (newq);
-		return err;
+		return LIBPD_QERR_CREATE_MUTEX;
 	}
 
 	err = pthread_cond_init (&newq->not_empty_cond, NULL);
 	if (err != 0) {
-		libpd_log (LEVEL_ERROR, err, "Error creating not_empty_cond for queue %s\n",
-			queue_name);
+		*exterr = err;
+		libpd_log_err (LEVEL_ERROR, err, ("Error creating not_empty_cond for queue %s\n",
+			queue_name));
 		pthread_mutex_destroy (&newq->mutex);
 		free (newq);
-		return err;
+		return LIBPD_QERR_CREATE_NECOND;
 	}
 
 	err = pthread_cond_init (&newq->not_full_cond, NULL);
 	if (err != 0) {
-		libpd_log (LEVEL_ERROR, err, "Error creating not_full_cond for queue %s\n",
-			queue_name);
+		*exterr = err;
+		libpd_log_err (LEVEL_ERROR, err, ("Error creating not_full_cond for queue %s\n",
+			queue_name));
 		pthread_mutex_destroy (&newq->mutex);
 		pthread_cond_destroy (&newq->not_empty_cond);
 		free (newq);
-		return err;
+		return LIBPD_QERR_CREATE_NFCOND;
 	}
 
 	newq->msg_array = malloc (array_size);
 	if (NULL == newq->msg_array) {
-		libpd_log (LEVEL_ERROR, 0, "Unable to allocate memory(2) for queue %s\n",
-			queue_name);
+		libpd_log (LEVEL_ERROR, ("Unable to allocate memory(2) for queue %s\n",
+			queue_name));
 		pthread_mutex_destroy (&newq->mutex);
 		pthread_cond_destroy (&newq->not_empty_cond);
 		pthread_cond_destroy (&newq->not_full_cond);
 		free (newq);
-		return ENOMEM;
+		return LIBPD_QERR_CREATE_ALLOC_2;
 	}
 
 	*mq = (libpd_mq_t) newq;
@@ -158,14 +169,15 @@ int libpd_qdestroy (libpd_mq_t *mq, free_msg_func_t *free_msg_func)
 	return 0;
 }
 
-int libpd_qsend (libpd_mq_t mq, void *msg, unsigned timeout_ms)
+int libpd_qsend (libpd_mq_t mq, void *msg, unsigned timeout_ms, int *exterr)
 {
 	queue_t *q = (queue_t*) mq;
 	struct timespec ts;
 	int rtn;
 
+	*exterr = 0;
 	if (NULL == mq)
-		return EINVAL;
+		return LIBPD_QERR_SEND_NULL;
 	pthread_mutex_lock (&q->mutex);
 	while (true) {
 		if (enqueue_msg (q, msg))
@@ -173,11 +185,15 @@ int libpd_qsend (libpd_mq_t mq, void *msg, unsigned timeout_ms)
 		get_expire_time (timeout_ms, &ts);
 		rtn = pthread_cond_timedwait (&q->not_full_cond, &q->mutex, &ts);
 		if (rtn != 0) {
-			if (rtn != ETIMEDOUT)
-				libpd_log (LEVEL_ERROR, rtn, 
-					"pthread_cond_timedwait error waiting for not_full_cond\n");
+			if (rtn == ETIMEDOUT) {
+				pthread_mutex_unlock (&q->mutex);
+				return 1;
+			}
+			*exterr = rtn;
+			libpd_log_err (LEVEL_ERROR, rtn, 
+				("pthread_cond_timedwait error waiting for not_full_cond\n"));
 			pthread_mutex_unlock (&q->mutex);
-			return rtn;
+			return LIBPD_QERR_SEND_CONDWAIT;
 		}
 	}
 	if (q->msg_count == 1)
@@ -186,15 +202,16 @@ int libpd_qsend (libpd_mq_t mq, void *msg, unsigned timeout_ms)
 	return 0;
 }
 
-int libpd_qreceive (libpd_mq_t mq, void **msg, unsigned timeout_ms)
+int libpd_qreceive (libpd_mq_t mq, void **msg, unsigned timeout_ms, int *exterr)
 {
 	queue_t *q = (queue_t*) mq;
 	struct timespec ts;
 	void *msg__;
 	int rtn;
 
+	*exterr = 0;
 	if (NULL == mq)
-		return EINVAL;
+		return LIBPD_QERR_RCV_NULL;
 	pthread_mutex_lock (&q->mutex);
 	while (true) {
 		msg__ = dequeue_msg (q);
@@ -203,11 +220,15 @@ int libpd_qreceive (libpd_mq_t mq, void **msg, unsigned timeout_ms)
 		get_expire_time (timeout_ms, &ts);
 		rtn = pthread_cond_timedwait (&q->not_empty_cond, &q->mutex, &ts);
 		if (rtn != 0) {
-			if (rtn != ETIMEDOUT)
-				libpd_log (LEVEL_ERROR, rtn, 
-					"pthread_cond_timedwait error waiting for not_empty_cond\n");
+			if (rtn == ETIMEDOUT) {
+				pthread_mutex_unlock (&q->mutex);
+				return 1;
+			}
+			*exterr = rtn;
+			libpd_log_err (LEVEL_ERROR, rtn, 
+				("pthread_cond_timedwait error waiting for not_empty_cond\n"));
 			pthread_mutex_unlock (&q->mutex);
-			return rtn;
+			return LIBPD_QERR_RCV_CONDWAIT;
 		}
 	}
 	*msg = msg__;
