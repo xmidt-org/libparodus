@@ -41,6 +41,7 @@ target_link_libraries (libpd
                        -lmsgpackc
                        -ltrower-base64
                        -lnanomsg
+                       -lcimplog
                        -lm
                        -lpthread
                        -lrt)
@@ -56,6 +57,7 @@ target_link_libraries (mock_parodus
  -lmsgpackc
  -ltrower-base64
  -lnanomsg
+ -lcimplog
  -lm
  -lpthread
 )
