@@ -38,8 +38,7 @@ target_link_libraries (tcp gcov cunit -lnanomsg -lm -lpthread)
                 #libpd_test.c
                 #../src/libparodus.c
                 #../src/libparodus_time.c
-                #../src/libparodus_queues.c)
-
+                #../src/libparodus_
 #target_link_libraries (libpd
                        #gcov
                        #cunit
@@ -65,6 +64,7 @@ target_link_libraries (tcp gcov cunit -lnanomsg -lm -lpthread)
  #-lm
  #-lpthread
 #)
+
 
 #-------------------------------------------------------------------------------
 #   coverage
