@@ -1,0 +1,13 @@
+diff --git a/src/transports/tcp/btcp.c b/src/transports/tcp/btcp.c
+index 4fe8b58..b87f0a1 100644
+--- a/src/transports/tcp/btcp.c
++++ b/src/transports/tcp/btcp.c
+@@ -154,7 +154,7 @@ int nn_btcp_create (struct nn_ep *ep)
+ 
+     rc = nn_btcp_listen (self);
+     if (rc != 0) {
+-        // I suspect we might need to do nn_free here.
++        nn_free (self);
+         return rc;
+     }
+ 
