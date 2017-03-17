@@ -19,6 +19,12 @@
 
 #include "libparodus.h"
 
+typedef struct {
+  int sock;
+  int eid; // nanomsg endpoint ID
+} nn_sock_t;
+
+
 /** 
  * @brief libparodus internal error rtn codes
  * 

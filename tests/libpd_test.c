@@ -103,10 +103,11 @@ static libpd_instance_t test_instance2;
 // libparodus functions to be tested
 extern void test_set_cfg (libpd_cfg_t *new_cfg);
 extern int flush_wrp_queue (libpd_mq_t wrp_queue, uint32_t delay_ms);
-extern int connect_receiver 
-	(const char *rcv_url, int keepalive_timeout_secs, int *exterr);
-extern int connect_sender (const char *send_url, int *exterr);
-extern void shutdown_socket (int *sock);
+extern int connect_receiver (const char *rcv_url, 
+	int keepalive_timeout_secs, nn_sock_t *sock, int *exterr);
+extern int connect_sender (const char *send_url, nn_sock_t *sock, 
+	int *exterr);
+extern void shutdown_socket (nn_sock_t *sock);
 
 extern bool is_auth_received (void);
 extern int libparodus_receive__ (libpd_mq_t wrp_queue, 
@@ -700,7 +701,8 @@ void test_1(void)
 	unsigned reply_error_count = 0;
 	int reconnect_count, keep_alive_count;
 	int rtn, exterr;
-	int test_sock, dup_sock;
+	nn_sock_t test_sock;
+	nn_sock_t dup_sock;
 	libpd_mq_t test_queue;
 	wrp_msg_t *wrp_msg;
 	unsigned event_num = 0;
@@ -720,31 +722,32 @@ void test_1(void)
 
 	//test_set_cfg (&cfg);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect receiver, good IP\n"));
-	test_sock = connect_receiver (TEST_RCV_URL, 20, &exterr);
-	CU_ASSERT (test_sock >= 0) ;
-	if (test_sock >= 0)
+	rtn = connect_receiver (TEST_RCV_URL, 20, &test_sock, &exterr);
+	CU_ASSERT (rtn == 0) ;
+	if (rtn == 0)
 		shutdown_socket(&test_sock);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect receiver, bad IP\n"));
-	test_sock = connect_receiver (BAD_RCV_URL, 0, &exterr);
-	CU_ASSERT (test_sock < 0);
+	rtn = connect_receiver (BAD_RCV_URL, 0, &test_sock, &exterr);
+	CU_ASSERT (rtn != 0);
 	CU_ASSERT (exterr == EINVAL);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect receiver, good IP\n"));
-	test_sock = connect_receiver (TEST_RCV_URL, 20, &exterr);
-	CU_ASSERT (test_sock >= 0) ;
-	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect duplicate receiver\n"));
-	dup_sock = connect_receiver (TEST_RCV_URL, 20, &exterr);
-	CU_ASSERT (dup_sock < 0);
-	CU_ASSERT (exterr == EADDRINUSE);
-	if (test_sock >= 0)
+	rtn = connect_receiver (TEST_RCV_URL, 20, &test_sock, &exterr);
+	CU_ASSERT (rtn == 0) ;
+	if (rtn == 0) {
+		libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect duplicate receiver\n"));
+		rtn = connect_receiver (TEST_RCV_URL, 20, &dup_sock, &exterr);
+		CU_ASSERT (rtn != 0);
+		CU_ASSERT (exterr == EADDRINUSE);
 		shutdown_socket(&test_sock);
+	}
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect sender, good IP\n"));
-	test_sock = connect_sender (TEST_SEND_URL, &exterr);
-	CU_ASSERT (test_sock >= 0) ;
-	if (test_sock >= 0)
+	rtn = connect_sender (TEST_SEND_URL, &test_sock, &exterr);
+	CU_ASSERT (rtn == 0) ;
+	if (rtn == 0)
 		shutdown_socket(&test_sock);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect sender, bad IP\n"));
-	test_sock = connect_sender (BAD_SEND_URL, &exterr);
-	CU_ASSERT (test_sock < 0);
+	rtn = connect_sender (BAD_SEND_URL, &test_sock, &exterr);
+	CU_ASSERT (rtn != 0);
 	CU_ASSERT (exterr == EINVAL);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test create wrp queue\n"));
 	CU_ASSERT (test_create_wrp_queue (&test_queue, "/TEST_QUEUE", &exterr) == 0);
