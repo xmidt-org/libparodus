@@ -927,7 +927,7 @@ static void *wrp_receiver_thread (void *arg)
 
 int flush_wrp_queue (libpd_mq_t wrp_queue, uint32_t delay_ms)
 {
-	wrp_msg_t *wrp_msg;
+	wrp_msg_t *wrp_msg = NULL;
 	int count = 0;
 	int err, exterr;
 
