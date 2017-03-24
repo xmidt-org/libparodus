@@ -779,9 +779,18 @@ void test_1(void)
 	CU_ASSERT (libparodus_receive__ 
 		(test_queue, &wrp_msg, 500, &exterr) == LIBPD_ERR_RCV_QUEUE_NULL);
 
-	CU_ASSERT (libparodus_receive (null_instance, &wrp_msg, 500) == LIBPD_ERROR_RCV_NULL_INST);
-	CU_ASSERT (libparodus_close_receiver (null_instance) == LIBPD_ERROR_CLOSE_RCV_NULL_INST);
-	CU_ASSERT (libparodus_send (null_instance, wrp_msg) == LIBPD_ERROR_SEND_NULL_INST);
+	rtn = libparodus_receive (null_instance, &wrp_msg, 500);
+	CU_ASSERT (rtn == LIBPD_ERROR_RCV_NULL_INST);
+  CU_ASSERT (strcmp (libparodus_strerror (rtn), 
+			"Error on libparodus receive. Null instance given.") == 0);
+	rtn = libparodus_close_receiver (null_instance);
+	CU_ASSERT (rtn == LIBPD_ERROR_CLOSE_RCV_NULL_INST);
+  CU_ASSERT (strcmp (libparodus_strerror (rtn), 
+			"Error on libparodus close receiver. Null instance given.") == 0);
+	rtn = libparodus_send (null_instance, wrp_msg);
+	CU_ASSERT (rtn == LIBPD_ERROR_SEND_NULL_INST);
+  CU_ASSERT (strcmp (libparodus_strerror (rtn), 
+			"Error on libparodus send. Null instance given.") == 0);
 	
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: libparodus_init bad parodus ip\n"));
 	cfg1.receive = true;

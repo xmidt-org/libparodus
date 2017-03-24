@@ -92,6 +92,51 @@ static void libparodus_shutdown__ (__instance_t *inst);
 #define RUN_STATE_RUNNING		1234
 #define RUN_STATE_DONE			-1234
 
+const char *libparodus_strerror (libpd_error_t err)
+{
+	switch (err) {
+		case LIBPD_ERROR_INIT_INST:
+			return "Error on libparodus init. Could not create new instance.";
+		case LIBPD_ERROR_INIT_CFG:
+			return "Error on libparodus init. Invalid config parameter.";
+		case LIBPD_ERROR_INIT_CONNECT:
+			return "Error on libparodus init. Could not connect.";
+		case LIBPD_ERROR_INIT_RCV_THREAD:
+			return "Error on libparodus init. Could not create receiver thread.";
+		case LIBPD_ERROR_INIT_QUEUE:
+			return "Error on libparodus init. Could not create receive queue.";
+		case LIBPD_ERROR_INIT_REGISTER:
+			return "Error on libparodus init. Registration failed.";
+		case LIBPD_ERROR_RCV_NULL_INST:
+			return "Error on libparodus receive. Null instance given.";
+		case LIBPD_ERROR_RCV_STATE:
+			return "Error on libparodus receive. Run state error.";
+		case LIBPD_ERROR_RCV_CFG:
+			return "Error on libparodus receive. Not configured for receive.";
+		case LIBPD_ERROR_RCV_RCV:
+			return "Error on libparodus receive. Error receiveing from receive queue.";
+		case LIBPD_ERROR_CLOSE_RCV_NULL_INST:
+			return "Error on libparodus close receiver. Null instance given.";
+		case LIBPD_ERROR_CLOSE_RCV_STATE:
+			return "Error on libparodus close receiver. Run state error.";
+		case LIBPD_ERROR_CLOSE_RCV_CFG:
+			return "Error on libparodus close receiver. Not configured for receive.";
+		case LIBPD_ERROR_CLOSE_RCV_TIMEDOUT:
+			return "Error on libparodus close receiver. Timded out waiting to enqueue close msg.";
+		case LIBPD_ERROR_CLOSE_RCV_SEND:
+			return "Error on libparodus close receiver. Unable to enqueue close msg.";
+		case LIBPD_ERROR_SEND_NULL_INST:
+			return "Error on libparodus send. Null instance given.";
+		case LIBPD_ERROR_SEND_STATE:
+			return "Error on libparodus send. Run state error.";
+		case LIBPD_ERROR_SEND_WRP_MSG:
+			return "Error on libparodus send. Invalid WRP Message.";
+		case LIBPD_ERROR_SEND_SOCKET:
+			return "Error on libparodus send. Socket send error.";
+	}
+	return "Unknown libparodus error";
+}
+
 int __libparodus_err (libpd_instance_t instance, int *exterr)
 {
 	__instance_t *inst = (__instance_t*) instance;

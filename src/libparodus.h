@@ -133,8 +133,7 @@ typedef enum {
 	LIBPD_ERROR_SEND_WRP_MSG = -403,
 	/** 
 	 * @brief Error on libparodus_send
-	 * connect sender error
-	 * only applies if connect_on_every_send
+	 * socket send error
 	 */
 	LIBPD_ERROR_SEND_SOCKET = -404,
 } libpd_error_t;
@@ -215,5 +214,13 @@ int libparodus_shutdown (libpd_instance_t *instance);
  */
 int libparodus_send (libpd_instance_t instance, wrp_msg_t *msg);
 
+/**
+ * Return the string value of a libparodus error code
+ *
+ * @param err libparodus error code
+ *
+ * @return string value of the specified error code
+ */
+const char *libparodus_strerror (libpd_error_t err);
 
 #endif
