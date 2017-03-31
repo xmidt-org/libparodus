@@ -1,0 +1,375 @@
+diff --git a/src/aio/ctx.c b/src/aio/ctx.c
+index f6ea105..3300095 100644
+--- a/src/aio/ctx.c
++++ b/src/aio/ctx.c
+@@ -54,6 +54,7 @@ void nn_ctx_leave (struct nn_ctx *self)
+     struct nn_fsm_event *event;
+     struct nn_queue eventsto;
+ 
++		nn_dbg (("-nn_ctx_leave\n"));
+     /*  Process any queued events before leaving the context. */
+     while (1) {
+         item = nn_queue_pop (&self->events);
+@@ -64,9 +65,9 @@ void nn_ctx_leave (struct nn_ctx *self)
+     }
+ 
+     /*  Notify the owner that we are leaving the context. */
+-    if (nn_fast (self->onleave != NULL))
++    if (nn_fast (self->onleave != NULL)) {
+         self->onleave (self);
+-
++    }
+     /*  Shortcut in the case there are no external events. */
+     if (nn_queue_empty (&self->eventsto)) {
+         nn_mutex_unlock (&self->sync);
+@@ -91,7 +92,6 @@ void nn_ctx_leave (struct nn_ctx *self)
+         nn_fsm_event_process (event);
+         nn_ctx_leave (event->fsm->ctx);
+     }
+-
+     nn_queue_term (&eventsto);
+ }
+ 
+diff --git a/src/aio/fsm.c b/src/aio/fsm.c
+index 33250de..54ec60b 100644
+--- a/src/aio/fsm.c
++++ b/src/aio/fsm.c
+@@ -178,6 +178,16 @@ void nn_fsm_action (struct nn_fsm *self, int type)
+     nn_fsm_feed (self, NN_FSM_ACTION, type, NULL);
+ }
+ 
++void nn_fsm_raise_from_src (struct nn_fsm *self, struct nn_fsm_event *event, 
++    int src, int type)
++{
++    event->fsm = self;
++    event->src = src;
++    event->srcptr = self->srcptr;
++    event->type = type;
++    nn_ctx_raise (self->ctx, event);
++}
++
+ void nn_fsm_raise (struct nn_fsm *self, struct nn_fsm_event *event, int type)
+ {
+     event->fsm = self->owner;
+diff --git a/src/aio/fsm.h b/src/aio/fsm.h
+index 19eca1a..5a41aef 100644
+--- a/src/aio/fsm.h
++++ b/src/aio/fsm.h
+@@ -97,6 +97,10 @@ struct nn_worker *nn_fsm_choose_worker (struct nn_fsm *self);
+ void nn_fsm_action (struct nn_fsm *self, int type);
+ 
+ /*  Send event from the state machine to its owner. */
++void nn_fsm_raise_from_src (struct nn_fsm *self, struct nn_fsm_event *event, 
++    int src, int type);
++
++/*  Send event from the state machine to its owner. */
+ void nn_fsm_raise (struct nn_fsm *self, struct nn_fsm_event *event, int type);
+ 
+ 
+diff --git a/src/core/global.c b/src/core/global.c
+index 12b1506..8a3f9b0 100644
+--- a/src/core/global.c
++++ b/src/core/global.c
+@@ -202,6 +202,39 @@ const char *nn_strerror (int errnum)
+     return nn_err_strerror (errnum);
+ }
+ 
++#ifdef NN_DBG_OUTPUT
++#include <stdarg.h>
++
++static FILE *dbg_file = NULL;
++
++void nn_init_dbg (void)
++{
++  dbg_file = fopen ("Testing/Temporary/NNTestOutput.log", "w");
++}
++
++void nn_dbg_print (const char *msg, ...)
++{
++	va_list arg_ptr; 
++	va_start(arg_ptr, msg); 
++  if (msg[0] != '-')
++	  vprintf (msg, arg_ptr);
++  if (dbg_file) {
++    vfprintf (dbg_file, msg, arg_ptr);
++    fflush (dbg_file);
++  }
++	va_end (arg_ptr);
++}
++
++void nn_end_dbg (void)
++{
++  if (dbg_file) {
++    fclose (dbg_file);
++    dbg_file = NULL;
++  }
++}
++
++#endif
++
+ static void nn_global_init (void)
+ {
+     int i;
+@@ -260,6 +293,7 @@ static void nn_global_init (void)
+ 
+     /*  Start the worker threads. */
+     nn_pool_init (&self.pool);
++
+ }
+ 
+ static void nn_global_term (void)
+diff --git a/src/transports/tcp/btcp.c b/src/transports/tcp/btcp.c
+index 4fe8b58..c5640f6 100644
+--- a/src/transports/tcp/btcp.c
++++ b/src/transports/tcp/btcp.c
+@@ -59,11 +59,16 @@
+ 
+ #define NN_BTCP_SRC_USOCK 1
+ #define NN_BTCP_SRC_ATCP 2
++#define NN_BTCP_SRC_BTCP 3
++
++#define NN_BTCP_TYPE_LISTEN_ERR 1
++
+ 
+ struct nn_btcp {
+ 
+     /*  The state machine. */
+     struct nn_fsm fsm;
++    struct nn_fsm_event listen_error;
+     int state;
+ 
+     struct nn_ep *ep;
+@@ -143,6 +148,7 @@ int nn_btcp_create (struct nn_ep *ep)
+     /*  Initialise the structure. */
+     nn_fsm_init_root (&self->fsm, nn_btcp_handler, nn_btcp_shutdown,
+         nn_ep_getctx (ep));
++    nn_fsm_event_init (&self->listen_error);
+     self->state = NN_BTCP_STATE_IDLE;
+     self->atcp = NULL;
+     nn_list_init (&self->atcps);
+@@ -152,9 +158,11 @@ int nn_btcp_create (struct nn_ep *ep)
+ 
+     nn_usock_init (&self->usock, NN_BTCP_SRC_USOCK, &self->fsm);
+ 
++    nn_dbg (("Calling nn_btcp_listen\n"));
+     rc = nn_btcp_listen (self);
+     if (rc != 0) {
+-        // I suspect we might need to do nn_free here.
++        nn_fsm_raise_from_src (&self->fsm, &self->listen_error,
++            NN_BTCP_SRC_BTCP, NN_BTCP_TYPE_LISTEN_ERR);
+         return rc;
+     }
+ 
+@@ -188,6 +196,7 @@ static void nn_btcp_shutdown (struct nn_fsm *self, int src, int type,
+     struct nn_list_item *it;
+     struct nn_atcp *atcp;
+ 
++    nn_dbg (("-nn_btcp_shutdown\n"));
+     btcp = nn_cont (self, struct nn_btcp, fsm);
+ 
+     if (nn_slow (src == NN_FSM_ACTION && type == NN_FSM_STOP)) {
+@@ -249,6 +258,7 @@ static void nn_btcp_handler (struct nn_fsm *self, int src, int type,
+     struct nn_btcp *btcp;
+     struct nn_atcp *atcp;
+ 
++    nn_dbg (("-nn_btcp_handler\n"));
+     btcp = nn_cont (self, struct nn_btcp, fsm);
+ 
+     switch (btcp->state) {
+@@ -257,6 +267,7 @@ static void nn_btcp_handler (struct nn_fsm *self, int src, int type,
+ /*  IDLE state.                                                               */
+ /******************************************************************************/
+     case NN_BTCP_STATE_IDLE:
++        nn_dbg (("-nn_btcp_handler state idle\n"));
+         nn_assert (src == NN_FSM_ACTION);
+         nn_assert (type == NN_FSM_START);
+         btcp->state = NN_BTCP_STATE_ACTIVE;
+@@ -267,13 +278,24 @@ static void nn_btcp_handler (struct nn_fsm *self, int src, int type,
+ /*  The execution is yielded to the atcp state machine in this state.         */
+ /******************************************************************************/
+     case NN_BTCP_STATE_ACTIVE:
++        nn_dbg (("-nn_btcp_handler state active\n"));
++        if (src == NN_BTCP_SRC_BTCP) {   
++            nn_assert (type == NN_BTCP_TYPE_LISTEN_ERR);
++            nn_dbg (("nn_btcp_handler state active, freeing btcp\n"));
++            nn_free (btcp);
++            nn_dbg (("nn_btcp_handler state active, freed btcp\n"));
++            return;
++        }
++
+         if (src == NN_BTCP_SRC_USOCK) {
+             /*  usock object cleaning up */
++            nn_dbg (("-nn_btcp_handler state active src usock\n"));
+             nn_assert (type == NN_USOCK_SHUTDOWN || type == NN_USOCK_STOPPED);
+             return;
+         }
+ 
+         /*  All other events come from child atcp objects. */
++        nn_dbg (("-nn_btcp_handler state active src atcp\n"));
+         nn_assert (src == NN_BTCP_SRC_ATCP);
+         atcp = (struct nn_atcp*) srcptr;
+         switch (type) {
+@@ -357,17 +379,20 @@ static int nn_btcp_listen (struct nn_btcp *self)
+     }
+ 
+     /*  Start listening for incoming connections. */
++    nn_dbg (("-Calling nn_usock_start\n"));
+     rc = nn_usock_start (&self->usock, ss.ss_family, SOCK_STREAM, 0);
+     if (rc < 0) {
+         return rc;
+     }
+ 
++    nn_dbg (("-Calling nn_usock_bind\n"));
+     rc = nn_usock_bind (&self->usock, (struct sockaddr*) &ss, (size_t) sslen);
+     if (rc < 0) {
+        nn_usock_stop (&self->usock);
+        return rc;
+     }
+ 
++    nn_dbg (("-Calling nn_usock_listen\n"));
+     rc = nn_usock_listen (&self->usock, NN_BTCP_BACKLOG);
+     if (rc < 0) {
+         nn_usock_stop (&self->usock);
+diff --git a/src/utils/err.c b/src/utils/err.c
+index e15148d..4c0a65f 100644
+--- a/src/utils/err.c
++++ b/src/utils/err.c
+@@ -210,3 +210,4 @@ void nn_win_error (int err, char *buf, size_t bufsize)
+ }
+ 
+ #endif
++
+diff --git a/src/utils/err.h b/src/utils/err.h
+index fbaf65d..a8bb866 100644
+--- a/src/utils/err.h
++++ b/src/utils/err.h
+@@ -33,7 +33,10 @@
+ 
+ #include "fast.h"
+ 
++#define NN_DBG_OUTPUT 1
++
+ #if defined _MSC_VER
++#undef NN_DBG_OUTPUT
+ #define NN_NORETURN __declspec(noreturn)
+ #elif defined __GNUC__
+ #define NN_NORETURN __attribute__ ((noreturn))
+@@ -171,4 +174,24 @@ int nn_err_wsa_to_posix (int wsaerr);
+ void nn_win_error (int err, char *buf, size_t bufsize);
+ #endif
+ 
++/* -------- Debug Output ------------ */
++#ifdef NN_DBG_OUTPUT
++
++void nn_init_dbg (void);
++
++void nn_dbg_print (const char *msg, ...);
++
++/* Note the need for double parentheses */
++#define nn_dbg(msg) nn_dbg_print msg;
++
++void nn_end_dbg (void);
++
++#else
++
++#define nn_init_dbg()
++#define nn_dbg(msg)
++#define nn_end_dbg()
++
++#endif
++
+ #endif
+diff --git a/tests/tcp.c b/tests/tcp.c
+index a5063a2..9938132 100644
+--- a/tests/tcp.c
++++ b/tests/tcp.c
+@@ -26,9 +26,11 @@
+ #include "../src/pair.h"
+ #include "../src/pubsub.h"
+ #include "../src/tcp.h"
++#include "../src/utils/err.h"
+ 
+ #include "testutil.h"
+ 
++
+ /*  Tests TCP transport. */
+ 
+ int sc;
+@@ -44,12 +46,14 @@ int main (int argc, const char *argv[])
+     void * dummy_buf;
+     char addr[128];
+     char socket_address[128];
+-
+     int port = get_test_port(argc, argv);
+ 
++
+     test_addr_from(socket_address, "tcp", "127.0.0.1", port);
+ 
++    
+     /*  Try closing bound but unconnected socket. */
++    nn_dbg (("Try closing bound but unconnected socket\n"));
+     sb = test_socket (AF_SP, NN_PAIR);
+     test_bind (sb, socket_address);
+     test_close (sb);
+@@ -65,6 +69,7 @@ int main (int argc, const char *argv[])
+     sc = test_socket (AF_SP, NN_PAIR);
+ 
+     /*  Check NODELAY socket option. */
++    nn_dbg (("Check NODELAY socket option\n"));
+     sz = sizeof (opt);
+     rc = nn_getsockopt (sc, NN_TCP, NN_TCP_NODELAY, &opt, &sz);
+     errno_assert (rc == 0);
+@@ -83,6 +88,7 @@ int main (int argc, const char *argv[])
+     nn_assert (opt == 1);
+ 
+     /*  Try using invalid address strings. */
++    nn_dbg (("Test invalid address strings\n"));
+     rc = nn_connect (sc, "tcp://*:");
+     nn_assert (rc < 0);
+     errno_assert (nn_errno () == EINVAL);
+@@ -138,6 +144,7 @@ int main (int argc, const char *argv[])
+     test_bind (sb, socket_address);
+ 
+     /*  Ping-pong test. */
++    nn_dbg (("Ping pong test\n"));
+     for (i = 0; i != 100; ++i) {
+ 
+         test_send (sc, "ABC");
+@@ -159,6 +166,7 @@ int main (int argc, const char *argv[])
+     test_close (sb);
+ 
+     /*  Test whether connection rejection is handled decently. */
++    nn_dbg (("Test Connection Rejection\n"));
+     sb = test_socket (AF_SP, NN_PAIR);
+     test_bind (sb, socket_address);
+     s1 = test_socket (AF_SP, NN_PAIR);
+@@ -170,15 +178,20 @@ int main (int argc, const char *argv[])
+     test_close (s1);
+     test_close (sb);
+ 
++    nn_init_dbg ();
++
+     /*  Test two sockets binding to the same address. */
++    nn_dbg (("Test rebinding to same address\n"));
+     sb = test_socket (AF_SP, NN_PAIR);
+     test_bind (sb, socket_address);
+     s1 = test_socket (AF_SP, NN_PAIR);
+ 
++    nn_dbg (("Rebind\n"));
+     rc = nn_bind (s1, socket_address);
+     nn_assert (rc < 0);
+     errno_assert (nn_errno () == EADDRINUSE);
+ 
++    nn_dbg (("Connect to same address\n"));
+     sc = test_socket (AF_SP, NN_PAIR);
+     test_connect (sc, socket_address);
+     nn_sleep (100);
+@@ -222,6 +235,7 @@ int main (int argc, const char *argv[])
+     test_connect (sc, socket_address);
+     nn_sleep (100);
+     test_close (sc);
+-
++    nn_dbg (("End Tcp Test\n"));
++    nn_end_dbg ();
+     return 0;
+ }
