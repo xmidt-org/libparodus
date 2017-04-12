@@ -23,49 +23,53 @@ add_test(NAME NMsgTest COMMAND nmsg)
 add_executable (nmsg nmsg.c)
 target_link_libraries (nmsg gcov cunit -lnanomsg -lm -lpthread)
 
+#-------------------------------------------------------------------------------
+#   test tcp
+#-------------------------------------------------------------------------------
+add_test(NAME TcpTest COMMAND tcp)
+add_executable (tcp ./tcp/tcp.c)
+target_link_libraries (tcp gcov cunit -lnanomsg -lm -lpthread)
 
 #-------------------------------------------------------------------------------
 #   test libparodus
 #-------------------------------------------------------------------------------
-add_test(NAME LibPDTest COMMAND libpd)
-add_executable (libpd
-                libpd_test.c
-                ../src/libparodus.c
-                ../src/libparodus_time.c
-                ../src/libparodus_queues.c)
-
-target_link_libraries (libpd
-                       gcov
-                       cunit
-                       -lwrp-c
-                       -lmsgpackc
-                       -ltrower-base64
-                       -lnanomsg
-                       -lcimplog
-                       -lm
-                       -lpthread
-                       -lrt)
+#add_test(NAME LibPDTest COMMAND libpd)
+#add_executable (libpd
+                #libpd_test.c
+                #../src/libparodus.c
+                #../src/libparodus_time.c
+                #../src/libparodus_
+#target_link_libraries (libpd
+                       #gcov
+                       #cunit
+                       #-lwrp-c
+                       #-lmsgpackc
+                       #-ltrower-base64
+                       #-lnanomsg
+                       #-lm
+                       #-lpthread
+                       #-lrt)
 
 
 #-------------------------------------------------------------------------------
 #   mock code
 #-------------------------------------------------------------------------------
-add_executable(mock_parodus mock_parodus.c)
+#add_executable(mock_parodus mock_parodus.c)
 
-target_link_libraries (mock_parodus
- -lwrp-c
- -lmsgpackc
- -ltrower-base64
- -lnanomsg
- -lcimplog
- -lm
- -lpthread
-)
+#target_link_libraries (mock_parodus
+ #-lwrp-c
+ #-lmsgpackc
+ #-ltrower-base64
+ #-lnanomsg
+ #-lm
+ #-lpthread
+#)
+
 
 #-------------------------------------------------------------------------------
 #   coverage
 #-------------------------------------------------------------------------------
-add_custom_target(coverage
-                  COMMAND lcov -q --capture --directory ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/libpd.dir/__/src --output-file coverage.info
-                  COMMAND genhtml coverage.info
-                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+#add_custom_target(coverage
+                  #COMMAND lcov -q --capture --directory ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/libpd.dir/__/src --output-file coverage.info
+                  #COMMAND genhtml coverage.info
+                  #WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
