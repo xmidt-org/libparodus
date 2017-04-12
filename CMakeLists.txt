@@ -25,6 +25,7 @@ set(PATCHES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/patches)
 set(INCLUDE_DIR ${INSTALL_DIR}/include)
 set(LIBRARY_DIR ${INSTALL_DIR}/lib)
 set(LIBRARY_DIR64 ${INSTALL_DIR}/lib64)
+set(COMMON_LIBRARY_DIR ${INSTALL_DIR}/lib/${CMAKE_LIBRARY_ARCHITECTURE})
 set(TEST_RESULTS_DIR ${CMAKE_CURRENT_BINARY_DIR}/test_results)
 file(MAKE_DIRECTORY ${TEST_RESULTS_DIR})
 
@@ -115,7 +116,7 @@ add_dependencies(libwrp-c wrp-c)
 endif ()
 
 add_subdirectory(src)
-link_directories ( ${LIBRARY_DIR} ${LIBRARY_DIR64} )
+link_directories ( ${LIBRARY_DIR} ${LIBRARY_DIR64} ${COMMON_LIBRARY_DIR} )
 
 add_definitions(-std=c99)
 
