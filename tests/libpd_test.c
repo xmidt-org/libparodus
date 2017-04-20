@@ -50,6 +50,7 @@
 #define GOOD_CLIENT_URL "tcp://127.0.0.1:6667"
 #define GOOD_CLIENT_URL2 "tcp://127.0.0.1:6665"
 //#define PARODUS_URL "ipc:///tmp/parodus_server.ipc"
+//#define UNAVAIL_PARODUS_URL "tcp://10.172.47.109:6666"
 #define TEST_SEND_URL  "tcp://127.0.0.1:6007"
 #define BAD_SEND_URL   "tcp://127.0.0.1:x007"
 #define BAD_PARODUS_URL "tcp://127.0.0.1:x007"
@@ -796,7 +797,10 @@ void test_1(void)
 	cfg1.receive = true;
 	cfg1.parodus_url = BAD_PARODUS_URL;
 	CU_ASSERT (libparodus_init (&test_instance1, &cfg1) == LIBPD_ERROR_INIT_CFG);
-	// CU_ASSERT (exterr == EINVAL);
+	rtn = __libparodus_err (test_instance1, &exterr);
+  libpd_log (LEVEL_INFO, ("LIBPD_TEST: rtn %x, exterr %d\n", rtn, exterr));
+	CU_ASSERT (rtn == LIBPD_ERR_INIT_SEND_CONN);
+	CU_ASSERT (exterr == EINVAL);
 	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
 	cfg1.parodus_url = GOOD_PARODUS_URL;
 	cfg1.client_url = BAD_CLIENT_URL;
@@ -805,6 +809,11 @@ void test_1(void)
 	//CU_ASSERT (exterr == EINVAL);
 	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
 	cfg1.client_url = GOOD_CLIENT_URL;
+	//cfg1.service_name = "VeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryLongService";
+	//libpd_log (LEVEL_INFO, ("LIBPD_TEST: libparodus_init service name too long\n"));
+	//CU_ASSERT (libparodus_init (&test_instance1, &cfg1) == LIBPD_ERROR_INIT_INST);
+	//CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
+	//cfg1.service_name = service_name1;
 
 	if (no_mock_send_only_test) {
 		test_send_only ();

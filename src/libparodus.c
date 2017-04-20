@@ -42,7 +42,6 @@
 #define DEFAULT_KEEPALIVE_TIMEOUT_SECS 65
 
 #define URL_SIZE 32
-#define QNAME_SIZE 50
 
 typedef struct {
 	int run_state;
@@ -57,7 +56,7 @@ typedef struct {
 	int rcv_sock;
 	int stop_rcv_sock;
 	int send_sock;
-	char wrp_queue_name[QNAME_SIZE];
+	char *wrp_queue_name;
 	libpd_mq_t wrp_queue;
 	pthread_t wrp_receiver_tid;
 	pthread_mutex_t send_mutex;
@@ -166,13 +165,18 @@ static void getParodusUrl(__instance_t *inst)
 static __instance_t *make_new_instance (libpd_cfg_t *cfg)
 {
 	size_t qname_len;
+	char *wrp_queue_name;
 	__instance_t *inst = (__instance_t*) malloc (sizeof (__instance_t));
 	if (NULL == inst)
 		return NULL;
 	qname_len = strlen(wrp_qname_hdr) + strlen(cfg->service_name) + 1;
-	if (qname_len >= QNAME_SIZE)
+	wrp_queue_name = (char*) malloc (qname_len+1);
+	if (NULL == wrp_queue_name) {
+		free (inst);
 		return NULL;
+	}
 	memset ((void*) inst, 0, sizeof(__instance_t));
+	inst->wrp_queue_name = wrp_queue_name;
 	pthread_mutex_init (&inst->send_mutex, NULL);
 	//inst->cfg = *cfg;
 	memcpy (&inst->cfg, cfg, sizeof(libpd_cfg_t));
@@ -187,6 +191,8 @@ static void destroy_instance (libpd_instance_t *instance)
 	if (NULL != instance) {
 		inst = (__instance_t *) *instance;
 		if (NULL != inst) {
+			if (NULL != inst->wrp_queue_name)
+				free (inst->wrp_queue_name);
 			pthread_mutex_destroy (&inst->send_mutex);
 			free (inst);
 			*instance = NULL;
