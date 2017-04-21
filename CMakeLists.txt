@@ -34,6 +34,14 @@ include_directories(${INCLUDE_DIR}
                     ${INCLUDE_DIR}/trower-base64
                     ${INCLUDE_DIR}/wrp-c
                    )
+                   
+if (MAIN_PROJ_BUILD) 
+include_directories(
+                    ${MAIN_PROJ_INCLUDE_PATH}                 
+                    ${MAIN_PROJ_INCLUDE_PATH}/msgpack
+                    ${MAIN_PROJ_INCLUDE_PATH}/trower-base64
+                    ${MAIN_PROJ_INCLUDE_PATH}/wrp-c)
+endif ()                   
 
 # Compile options/flags
 #-------------------------------------------------------------------------------
@@ -52,6 +60,7 @@ if (NOT BUILD_YOCTO)
 
 # base64 external dependency
 #-------------------------------------------------------------------------------
+if (NOT MAIN_PROJ_BUILD)
 ExternalProject_Add(trower-base64
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/_prefix/trower-base64
     GIT_REPOSITORY https://github.com/Comcast/trower-base64.git
@@ -109,14 +118,17 @@ ExternalProject_Add(wrp-c
                   -DMSGPACK_ENABLE_CXX=OFF
                   -DMSGPACK_BUILD_EXAMPLES=OFF
                   -DBUILD_TESTING=OFF
+                  -DMAIN_PROJ_BUILD=ON
+    	          -DMAIN_PROJ_LIB_PATH=${LIBRARY_DIR}
+    		  -DMAIN_PROJ_INCLUDE_PATH=${INCLUDE_DIR}
 )
 add_library(libwrp-c STATIC SHARED IMPORTED)
 add_dependencies(libwrp-c wrp-c)
 
 endif ()
-
+endif ()
 add_subdirectory(src)
-link_directories ( ${LIBRARY_DIR} ${LIBRARY_DIR64} ${COMMON_LIBRARY_DIR} )
+link_directories ( ${LIBRARY_DIR} ${LIBRARY_DIR64} ${COMMON_LIBRARY_DIR} ${MAIN_PROJ_LIB_PATH})
 
 add_definitions(-std=c99)
 
