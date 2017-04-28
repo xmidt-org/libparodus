@@ -17,6 +17,7 @@
 #ifndef  _LIBPARODUS_LOG_H
 #define  _LIBPARODUS_LOG_H
 
+#include <stdbool.h>
 
 #define LEVEL_ERROR 0
 #define LEVEL_INFO  1

@@ -31,6 +31,7 @@ typedef struct {
 	int  keepalive_timeout_secs; 
 	const char *parodus_url;
 	const char *client_url;
+	unsigned test_flags;  // always 0 except when testing
 } libpd_cfg_t;
 
 typedef void *libpd_instance_t;
