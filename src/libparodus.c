@@ -28,6 +28,7 @@
 #include "libparodus.h"
 #include "libparodus_private.h"
 #include "libparodus_time.h"
+#include "libparodus_test_timing.h"
 #include <pthread.h>
 #include "libparodus_queues.h"
 
@@ -91,47 +92,62 @@ static void libparodus_shutdown__ (__instance_t *inst);
 #define RUN_STATE_RUNNING		1234
 #define RUN_STATE_DONE			-1234
 
+typedef struct {
+	libpd_error_t error_code;
+	const char *error_msg;
+} err_table_item_t;
+
+err_table_item_t error_msg_table[] = {
+
+		{ LIBPD_ERROR_INIT_INST,
+			 "Error on libparodus init. Could not create new instance."},
+		{ LIBPD_ERROR_INIT_CFG,
+			 "Error on libparodus init. Invalid config parameter."},
+		{ LIBPD_ERROR_INIT_CONNECT,
+			 "Error on libparodus init. Could not connect."},
+		{ LIBPD_ERROR_INIT_RCV_THREAD,
+			 "Error on libparodus init. Could not create receiver thread."},
+		{ LIBPD_ERROR_INIT_QUEUE,
+			 "Error on libparodus init. Could not create receive queue."},
+		{ LIBPD_ERROR_INIT_REGISTER,
+			 "Error on libparodus init. Registration failed."},
+		{ LIBPD_ERROR_RCV_NULL_INST,
+			 "Error on libparodus receive. Null instance given."},
+		{ LIBPD_ERROR_RCV_STATE,
+			 "Error on libparodus receive. Run state error."},
+		{ LIBPD_ERROR_RCV_CFG,
+			 "Error on libparodus receive. Not configured for receive."},
+		{ LIBPD_ERROR_RCV_RCV,
+			 "Error on libparodus receive. Error receiveing from receive queue."},
+		{ LIBPD_ERROR_CLOSE_RCV_NULL_INST,
+			 "Error on libparodus close receiver. Null instance given."},
+		{ LIBPD_ERROR_CLOSE_RCV_STATE,
+			 "Error on libparodus close receiver. Run state error."},
+		{ LIBPD_ERROR_CLOSE_RCV_CFG,
+			 "Error on libparodus close receiver. Not configured for receive."},
+		{ LIBPD_ERROR_CLOSE_RCV_TIMEDOUT,
+			 "Error on libparodus close receiver. Timded out waiting to enqueue close msg."},
+		{ LIBPD_ERROR_CLOSE_RCV_SEND,
+			 "Error on libparodus close receiver. Unable to enqueue close msg."},
+		{ LIBPD_ERROR_SEND_NULL_INST,
+			 "Error on libparodus send. Null instance given."},
+		{ LIBPD_ERROR_SEND_STATE,
+			 "Error on libparodus send. Run state error."},
+		{ LIBPD_ERROR_SEND_WRP_MSG,
+			 "Error on libparodus send. Invalid WRP Message."},
+		{ LIBPD_ERROR_SEND_SOCKET,
+			 "Error on libparodus send. Socket send error."}
+};
+
+
+#define NUM_ERROR_MSGS ( (sizeof error_msg_table) / sizeof(err_table_item_t) )
+
 const char *libparodus_strerror (libpd_error_t err)
 {
-	switch (err) {
-		case LIBPD_ERROR_INIT_INST:
-			return "Error on libparodus init. Could not create new instance.";
-		case LIBPD_ERROR_INIT_CFG:
-			return "Error on libparodus init. Invalid config parameter.";
-		case LIBPD_ERROR_INIT_CONNECT:
-			return "Error on libparodus init. Could not connect.";
-		case LIBPD_ERROR_INIT_RCV_THREAD:
-			return "Error on libparodus init. Could not create receiver thread.";
-		case LIBPD_ERROR_INIT_QUEUE:
-			return "Error on libparodus init. Could not create receive queue.";
-		case LIBPD_ERROR_INIT_REGISTER:
-			return "Error on libparodus init. Registration failed.";
-		case LIBPD_ERROR_RCV_NULL_INST:
-			return "Error on libparodus receive. Null instance given.";
-		case LIBPD_ERROR_RCV_STATE:
-			return "Error on libparodus receive. Run state error.";
-		case LIBPD_ERROR_RCV_CFG:
-			return "Error on libparodus receive. Not configured for receive.";
-		case LIBPD_ERROR_RCV_RCV:
-			return "Error on libparodus receive. Error receiveing from receive queue.";
-		case LIBPD_ERROR_CLOSE_RCV_NULL_INST:
-			return "Error on libparodus close receiver. Null instance given.";
-		case LIBPD_ERROR_CLOSE_RCV_STATE:
-			return "Error on libparodus close receiver. Run state error.";
-		case LIBPD_ERROR_CLOSE_RCV_CFG:
-			return "Error on libparodus close receiver. Not configured for receive.";
-		case LIBPD_ERROR_CLOSE_RCV_TIMEDOUT:
-			return "Error on libparodus close receiver. Timded out waiting to enqueue close msg.";
-		case LIBPD_ERROR_CLOSE_RCV_SEND:
-			return "Error on libparodus close receiver. Unable to enqueue close msg.";
-		case LIBPD_ERROR_SEND_NULL_INST:
-			return "Error on libparodus send. Null instance given.";
-		case LIBPD_ERROR_SEND_STATE:
-			return "Error on libparodus send. Run state error.";
-		case LIBPD_ERROR_SEND_WRP_MSG:
-			return "Error on libparodus send. Invalid WRP Message.";
-		case LIBPD_ERROR_SEND_SOCKET:
-			return "Error on libparodus send. Socket send error.";
+	unsigned i;
+	for (i=0; i<NUM_ERROR_MSGS; i++) {
+		if (err == error_msg_table[i].error_code)
+			return error_msg_table[i].error_msg;
 	}
 	return "Unknown libparodus error";
 }
@@ -158,6 +174,12 @@ static void getParodusUrl(__instance_t *inst)
 		inst->parodus_url = PARODUS_SERVICE_URL;
 	if (NULL == inst->client_url)
 		inst->client_url = PARODUS_CLIENT_URL;
+	// to test connect_on_every_send, start the parodus_url with "test:"
+	// which will be stripped off the url.
+	if (strncmp (inst->parodus_url, "test:", 5) == 0) {
+		inst->connect_on_every_send = true;
+		inst->parodus_url += 5;
+	}
   libpd_log (LEVEL_INFO, ("LIBPARODUS: parodus url is  %s\n", inst->parodus_url));
   libpd_log (LEVEL_INFO, ("LIBPARODUS: client url is  %s\n", inst->client_url));
 }
@@ -425,22 +447,23 @@ static bool show_options (libpd_cfg_t *cfg)
 	return cfg->receive;
 }
 
-static void abort_init (__instance_t *inst, const char *opt_str)
-{
-	int i;
-	char c;
+// define ABORT FLAGS
+#define ABORT_RCV_SOCK	1
+#define ABORT_QUEUE			2
+#define ABORT_SEND_SOCK	4
+#define ABORT_STOP_RCV_SOCK	8
 
-	for (i=0; (c=opt_str[i]) != 0; i++) {
-		if (c == 'r')
-			shutdown_socket (&inst->rcv_sock);
-		else if (c == 'q')
-			libpd_qdestroy (&inst->wrp_queue, &wrp_free);
-		else if (c == 's')
-			shutdown_socket(&inst->send_sock);
-		else if (c == 't')
+
+static void abort_init (__instance_t *inst, unsigned opt)
+{
+	if (opt & ABORT_RCV_SOCK)
+		shutdown_socket (&inst->rcv_sock);
+	if (opt & ABORT_QUEUE)
+		libpd_qdestroy (&inst->wrp_queue, &wrp_free);
+	if (opt & ABORT_SEND_SOCK)
+		shutdown_socket(&inst->send_sock);
+	if (opt & ABORT_STOP_RCV_SOCK)
 			shutdown_socket(&inst->stop_rcv_sock);
-	}
-  // instance will be destroyed in libparodus_shutdown
 }
 
 int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
@@ -462,6 +485,9 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
 	}
 	*instance = (libpd_instance_t) inst;
 
+	if (inst->cfg.test_flags & CFG_TEST_CONNECT_ON_EVERY_SEND)
+		inst->connect_on_every_send = true;
+
 	show_options (libpd_cfg);
 	if (inst->cfg.receive) {
 		libpd_log (LEVEL_INFO, ("LIBPARODUS: connecting receiver to %s\n",  inst->client_url));
@@ -473,20 +499,22 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
 		inst->rcv_sock = err;
 	}
 	if (!inst->connect_on_every_send) {
-		libpd_log (LEVEL_INFO, ("LIBPARODUS: connecting sender to %s\n", inst->parodus_url));
+		//libpd_log (LEVEL_INFO, ("LIBPARODUS: connecting sender to %s\n", inst->parodus_url));
 		err = connect_sender (inst->parodus_url, &oserr);
 		if (err < 0) {
-			abort_init (inst, "r");
+			abort_init (inst, ABORT_RCV_SOCK);
 			SETERR (oserr, LIBPD_ERR_INIT_SEND + err); 
 			return CONNECT_ERR (oserr);
 		}
 		inst->send_sock = err;
+		libpd_log (LEVEL_INFO, ("LIBPARODUS: connected sender to %s (%d)\n", 
+			inst->parodus_url, inst->send_sock));
 	}
 	if (inst->cfg.receive) {
 		// We use the stop_rcv_sock to send a stop msg to our own receive socket.
 		err = connect_sender (inst->client_url, &oserr);
 		if (err < 0) {
-			abort_init (inst, "rs");
+			abort_init (inst, ABORT_RCV_SOCK | ABORT_SEND_SOCK);
 			SETERR (oserr, LIBPD_ERR_INIT_TERMSOCK + err); 
 			return CONNECT_ERR (oserr);
 		}
@@ -494,7 +522,7 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
 		libpd_log (LEVEL_INFO, ("LIBPARODUS: Opened sockets\n"));
 		err = libpd_qcreate (&inst->wrp_queue, inst->wrp_queue_name, WRP_QUEUE_SIZE, &oserr);
 		if (err != 0) {
-			abort_init (inst, "rst");
+			abort_init (inst, ABORT_RCV_SOCK | ABORT_SEND_SOCK | ABORT_STOP_RCV_SOCK);
 			SETERR (oserr, LIBPD_ERR_INIT_QUEUE + err); 
 			return LIBPD_ERROR_INIT_QUEUE;
 		}
@@ -502,7 +530,7 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
 		err = create_thread (&inst->wrp_receiver_tid, wrp_receiver_thread,
 				inst);
 		if (err != 0) {
-			abort_init (inst, "rqst"); 
+			abort_init (inst, ABORT_RCV_SOCK | ABORT_QUEUE | ABORT_SEND_SOCK | ABORT_STOP_RCV_SOCK); 
 			SETERR (err, LIBPD_ERR_INIT_RCV_THREAD_PCR);
 			return LIBPD_ERROR_INIT_RCV_THREAD;
 		}
@@ -599,6 +627,7 @@ static void libparodus_shutdown__ (__instance_t *inst)
 		flush_wrp_queue (inst->wrp_queue, 5);
 		libpd_qdestroy (&inst->wrp_queue, &wrp_free);
 	}
+	libpd_log (LEVEL_DEBUG, ("LIBPARODUS: Shut down send sock %d\n", inst->send_sock));
 	shutdown_socket(&inst->send_sock);
 	if (inst->cfg.receive) {
 		shutdown_socket(&inst->stop_rcv_sock);
@@ -1036,5 +1065,4 @@ void test_get_counts (libpd_instance_t instance,
 	*keep_alive_count = inst->keep_alive_count;
 	*reconnect_count = inst->reconnect_count;
 }
-
 

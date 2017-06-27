@@ -55,6 +55,7 @@
 #define BAD_SEND_URL   "tcp://127.0.0.1:x007"
 #define BAD_PARODUS_URL "tcp://127.0.0.1:x007"
 #define GOOD_PARODUS_URL "tcp://127.0.0.1:6666"
+#define CONNECT_ON_EVERY_SEND_URL "test:tcp://127.0.0.1:6666"
 //#define CLIENT_URL "ipc:///tmp/parodus_client.ipc"
 
 static char current_dir_buf[256];
@@ -97,6 +98,8 @@ static bool no_mock_send_only_test = false;
 static bool do_send_blocking_test = false;
 static bool do_send_disconnect_test = false;
 static bool do_multiple_rcv_test = false;
+static bool connect_on_every_send = false;
+static bool do_multiple_inits_test = false;
 
 static libpd_instance_t test_instance1;
 static libpd_instance_t test_instance2;
@@ -692,6 +695,59 @@ void test_send_only (void)
 	CU_ASSERT (send_event_msgs (NULL, &event_num, 200, true) == 0);
 	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
 	CU_ASSERT (libparodus_shutdown (&test_instance2) == 0);
+
+	cfg1.test_flags |= CFG_TEST_CONNECT_ON_EVERY_SEND;
+	cfg2.test_flags |= CFG_TEST_CONNECT_ON_EVERY_SEND;
+	CU_ASSERT (libparodus_init(&test_instance1, &cfg1) == 0);
+	CU_ASSERT (libparodus_init(&test_instance2, &cfg2) == 0);
+	CU_ASSERT (send_event_msgs (NULL, &event_num, 200, true) == 0);
+	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
+	CU_ASSERT (libparodus_shutdown (&test_instance2) == 0);
+
+}
+
+void test_multiple_inits (void)
+{
+	#define NUM_INSTANCES 1000
+	int i, rtn, oserr, shutdown_ct;
+	libpd_cfg_t cfg1 = {.service_name = service_name1,
+		.receive = false, .keepalive_timeout_secs = 0,
+		.parodus_url = GOOD_PARODUS_URL, .client_url = GOOD_CLIENT_URL};
+	libpd_instance_t instance_table[NUM_INSTANCES];
+
+	libpd_log (LEVEL_INFO, ("LIBPD_TEST: Test many instances\n"));
+	for (i=0; i<NUM_INSTANCES; i++) {
+		rtn = libparodus_init(&instance_table[i], &cfg1);
+		if (rtn != 0)
+			break;
+	}
+	libpd_log (LEVEL_INFO, ("LIBPD_TEST: started %d instances\n", i));
+	shutdown_ct = 0;
+	if (rtn != 0) {
+		libpd_log (LEVEL_INFO, 
+			("LIBPD_TEST: init failed with code %d after %d instances\n", rtn, i));
+		CU_ASSERT (rtn == LIBPD_ERROR_INIT_CONNECT);
+		if (rtn != LIBPD_ERROR_INIT_INST) {
+			int libpd_err = __libparodus_err (instance_table[i], &oserr);
+			libpd_log_err (LEVEL_INFO, oserr,
+				("LIBPD_TEST: init err (%x)\n", -libpd_err));
+			CU_ASSERT (libpd_err == LIBPD_ERR_INIT_SEND_CREATE);
+			rtn = libparodus_shutdown (&instance_table[i]);
+			if (rtn == 0)
+				shutdown_ct++;
+		}
+	}
+	--i;
+	rtn = 0;
+	while (i >= 0) {
+		rtn = libparodus_shutdown (&instance_table[i]);
+		if (rtn != 0)
+			break;
+		shutdown_ct++;
+		--i;
+	}
+	libpd_log (LEVEL_INFO, ("LIBPD_TEST: shut down %d instances\n", shutdown_ct));
+	CU_ASSERT (rtn == 0);
 }
 
 void test_1(void)
@@ -815,6 +871,11 @@ void test_1(void)
 	//CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
 	//cfg1.service_name = service_name1;
 
+	if (connect_on_every_send) {
+		cfg1.test_flags |= CFG_TEST_CONNECT_ON_EVERY_SEND;
+		cfg2.test_flags |= CFG_TEST_CONNECT_ON_EVERY_SEND;
+	}
+
 	if (no_mock_send_only_test) {
 		test_send_only ();
 		return;
@@ -842,6 +903,9 @@ void test_1(void)
 	else if (do_send_disconnect_test)
 		test_send_disconnect ();
 	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
+
+	if (do_multiple_inits_test)
+		test_multiple_inits();  // this test won't work with valgrind
 
 	cfg1.receive = true;
 	if (using_mock) {
@@ -1006,6 +1070,14 @@ int main( int argc, char **argv __attribute__((unused)) )
 			if ((arg[0] == 'd') || (arg[0] == 'D')) {
 				using_mock = true;
 				do_send_disconnect_test = true;
+			}
+			if ((arg[0] == 'i') || (arg[0] == 'I')) {
+				using_mock = true;
+				do_multiple_inits_test = true;
+			}
+			if ((arg[0] == 'c') || (arg[0] == 'C')) {
+				using_mock = true;
+				connect_on_every_send = true;
 			}
 		}
 

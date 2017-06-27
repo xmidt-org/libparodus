@@ -389,4 +389,9 @@ typedef enum {
 int __libparodus_err (libpd_instance_t instance, int *exterr);
 
 
+/**
+ * Config test flags
+*/
+#define CFG_TEST_CONNECT_ON_EVERY_SEND	1 
+
 #endif

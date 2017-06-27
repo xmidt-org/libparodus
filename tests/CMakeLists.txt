@@ -30,6 +30,7 @@ target_link_libraries (nmsg gcov cunit -lnanomsg -lm -lpthread)
 add_test(NAME LibPDTest COMMAND libpd)
 add_executable (libpd
                 libpd_test.c
+                libparodus_test_timing.c
                 ../src/libparodus.c
                 ../src/libparodus_time.c
                 ../src/libparodus_queues.c)
