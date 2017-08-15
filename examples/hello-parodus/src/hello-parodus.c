@@ -5,6 +5,8 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <math.h>
+#include <getopt.h>
+
 #include <libparodus.h>
 #include <cimplog.h>
 #include <cJSON.h>
@@ -18,7 +20,7 @@
 #define MAX_PARAMETERNAME_LEN 512
 #define URL_SIZE              64
 #define LOGGING_MODULE        "hello-parodus"
-
+#define OPTIONS_STRING_FORMAT "p:c:"
 #define debug_error(...)      cimplog_error(LOGGING_MODULE, __VA_ARGS__)
 #define debug_info(...)       cimplog_info(LOGGING_MODULE, __VA_ARGS__)
 #define debug_print(...)      cimplog_debug(LOGGING_MODULE, __VA_ARGS__)
@@ -26,7 +28,14 @@
 /*----------------------------------------------------------------------------*/
 /*                            File Scoped Variables                           */
 /*----------------------------------------------------------------------------*/
-libpd_instance_t hpd_instance;
+static libpd_instance_t hpd_instance;
+static struct option command_line_options[] = {
+    {"parodus_url", optional_argument, 0, 'p'},
+    {"client_url", optional_argument, 0, 'c'},
+    {0,0,0,0}
+};
+static char *parodus_url = NULL;
+static char *client_url = NULL;
 
 /*----------------------------------------------------------------------------*/
 /*                             Function Prototypes                            */
@@ -43,6 +52,9 @@ static void start_parodus_receive_thread(void);
 /*----------------------------------------------------------------------------*/
 int main( int argc, char **argv)
 {
+    int item;
+    int options_index = 0;
+
     signal(SIGTERM, sig_handler);
     signal(SIGINT, sig_handler);
     signal(SIGUSR1, sig_handler);
@@ -56,9 +68,31 @@ int main( int argc, char **argv)
     signal(SIGHUP, sig_handler);
     signal(SIGALRM, sig_handler);
 
+    while (-1 != (item = getopt_long(argc, argv, OPTIONS_STRING_FORMAT,
+                         command_line_options, &options_index)))
+    {
+        switch (item) {
+            case 'p':
+                parodus_url = strdup(optarg);
+                break;
+            case 'c':
+                client_url = strdup(optarg);
+                break;
+            default:
+                break;
+        }    
+    }
+
     libpd_client_mgr();
     send_notification("Hello Parodus");
     
+    if( NULL != parodus_url ) {
+        free(parodus_url);
+    }
+    if( NULL != client_url ) {
+        free(client_url);
+    }
+
     return 0;
 }
 
@@ -105,12 +139,11 @@ static void send_notification(char const* buff)
     int sendStatus = -1;
     int backoffRetryTime = 0;
     int c = 2;
-    char source[MAX_PARAMETERNAME_LEN/2] = {'\0'};
+    char source[] = "mac:PCApplication";
     cJSON *notifyPayload = cJSON_CreateObject();
     char *stringifiedNotifyPayload;
 
     debug_print("buf: %s\n",buff);
-    snprintf(source, sizeof(source), "mac:PCApplication");
     cJSON_AddStringToObject(notifyPayload,"device_id", source);
     cJSON_AddStringToObject(notifyPayload,"iot", buff);
     stringifiedNotifyPayload = cJSON_PrintUnformatted(notifyPayload);
@@ -162,11 +195,18 @@ static void connect_parodus()
     max_retry_sleep = (int) pow(2, backoff_max_time) -1;
     debug_info("max_retry_sleep is %d\n", max_retry_sleep );
     
+    if( NULL == parodus_url ) {
+        parodus_url = strdup(PARODUS_URL);
+    }
+    if( NULL == client_url ) {
+        client_url = strdup(CLIENT_URL);
+    }
+
     libpd_cfg_t cfg = { .service_name = "hello-parodus",
                         .receive = true, 
                         .keepalive_timeout_secs = 64,
-                        .parodus_url = PARODUS_URL,
-                        .client_url = CLIENT_URL
+                        .parodus_url = parodus_url,
+                        .client_url = client_url
                       };
                       
     debug_info("Configurations => service_name : %s parodus_url : %s client_url : %s\n", cfg.service_name, cfg.parodus_url, cfg.client_url );
@@ -227,7 +267,6 @@ static void *parodus_receive_wait(void *vp)
             res_wrp_msg = (wrp_msg_t *)malloc(sizeof(wrp_msg_t));
             memset(res_wrp_msg, 0, sizeof(wrp_msg_t));
             debug_info("Request message : %s\n",(char *)wrp_msg->u.req.payload);
-            //handle_message((char *)wrp_msg->u.req.payload, wrp_msg->u.req.payload_size);
             cJSON *response = cJSON_CreateObject();
             cJSON_AddNumberToObject(response, "statusCode", 200);
             cJSON_AddStringToObject(response, "message", "Success");
