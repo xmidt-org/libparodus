@@ -44,7 +44,7 @@ static void sig_handler(int sig);
 static void libpd_client_mgr(void);
 static void send_notification(char const *buff);
 static void connect_parodus(void);
-static void *parodus_receive_wait(void *vp);
+static void* parodus_receive_wait(void *vp);
 static void start_parodus_receive_thread(void);
 
 /*----------------------------------------------------------------------------*/
@@ -68,10 +68,10 @@ int main( int argc, char **argv)
     signal(SIGHUP, sig_handler);
     signal(SIGALRM, sig_handler);
 
-    while (-1 != (item = getopt_long(argc, argv, OPTIONS_STRING_FORMAT,
-                         command_line_options, &options_index)))
+    while( -1 != (item = getopt_long(argc, argv, OPTIONS_STRING_FORMAT,
+                         command_line_options, &options_index)) )
     {
-        switch (item) {
+        switch( item ) {
             case 'p':
                 parodus_url = strdup(optarg);
                 break;
@@ -143,35 +143,36 @@ static void send_notification(char const* buff)
     cJSON *notifyPayload = cJSON_CreateObject();
     char *stringifiedNotifyPayload;
 
-    debug_print("buf: %s\n",buff);
+    /* Create JSON payload */
     cJSON_AddStringToObject(notifyPayload,"device_id", source);
     cJSON_AddStringToObject(notifyPayload,"iot", buff);
     stringifiedNotifyPayload = cJSON_PrintUnformatted(notifyPayload);
-    debug_info("Notification payload %s\n",stringifiedNotifyPayload);
 
+    /* Create WRP message to send Parodus */
     notif_wrp_msg = (wrp_msg_t *)malloc(sizeof(wrp_msg_t));
     memset(notif_wrp_msg, 0, sizeof(wrp_msg_t));
     notif_wrp_msg ->msg_type = WRP_MSG_TYPE__EVENT;
     notif_wrp_msg ->u.event.source = source;
-    debug_print("source: %s\n",notif_wrp_msg ->u.event.source);
     notif_wrp_msg ->u.event.dest = "event:IOT_NOTIFICATION";
-    debug_print("destination: %s\n", notif_wrp_msg ->u.event.dest);
     notif_wrp_msg->u.event.content_type = CONTENT_TYPE_JSON;
-    debug_print("content_type is %s\n",notif_wrp_msg->u.event.content_type);
     notif_wrp_msg ->u.event.payload = stringifiedNotifyPayload;
     notif_wrp_msg ->u.event.payload_size = strlen(stringifiedNotifyPayload);
-    while( retry_count <= 3 )
-    {
+
+    debug_print("buf: %s\n",buff);
+    debug_info("Notification payload %s\n",stringifiedNotifyPayload);
+    debug_print("source: %s\n",notif_wrp_msg ->u.event.source);
+    debug_print("destination: %s\n", notif_wrp_msg ->u.event.dest);
+    debug_print("content_type is %s\n",notif_wrp_msg->u.event.content_type);
+
+    /* Send message to Parodus */
+    while( retry_count <= 3 ) {
         backoffRetryTime = (int) pow(2, c) -1;
         sendStatus = libparodus_send(hpd_instance, notif_wrp_msg );
-        if(sendStatus == 0)
-        {
+        if(sendStatus == 0)        {
             retry_count = 0;
             debug_info("Notification successfully sent to parodus\n");
             break;
-        }
-        else
-        {
+        } else {
             debug_error("Failed to send Notification: '%s', retrying ....\n",libparodus_strerror(sendStatus));
             debug_print("sendNotification backoffRetryTime %d seconds\n", backoffRetryTime);
             sleep(backoffRetryTime);
@@ -208,98 +209,58 @@ static void connect_parodus()
                         .parodus_url = parodus_url,
                         .client_url = client_url
                       };
-                      
+                     
     debug_info("Configurations => service_name : %s parodus_url : %s client_url : %s\n", cfg.service_name, cfg.parodus_url, cfg.client_url );
     (void)retval;
     
-    while(1)
-    {
-        if(backoffRetryTime < max_retry_sleep)
-        {
+    while( 1 ) {
+        if( backoffRetryTime < max_retry_sleep ) {
             backoffRetryTime = (int) pow(2, c) -1;
         }
         debug_print("New backoffRetryTime value calculated as %d seconds\n", backoffRetryTime);
         int ret = libparodus_init (&hpd_instance, &cfg);
-        if(ret ==0)
-        {
+        if( ret ==0 ) {
             debug_info("Init for parodus Success..!!\n");
             break;
-        }
-        else
-        {
+        } else {
             debug_error("Init for parodus (url %s) failed: '%s'\n", cfg.parodus_url, libparodus_strerror(ret));
             sleep(backoffRetryTime);
             c++;
          
-	    if(backoffRetryTime == max_retry_sleep)
-	    {
+	    if( backoffRetryTime == max_retry_sleep ) {
 		c = 2;
 		backoffRetryTime = 0;
 		debug_print("backoffRetryTime reached max value, reseting to initial value\n");
 	    }
         }
 	retval = libparodus_shutdown(&hpd_instance);
-        
     }
 }
 
-static void *parodus_receive_wait(void *vp)
+static void* parodus_receive_wait(void *vp)
 {
     int rtn;
     wrp_msg_t *wrp_msg;
-    wrp_msg_t *res_wrp_msg ;
-    char *contentType = NULL;
-    while (1) 
-    {
-        rtn = libparodus_receive (hpd_instance, &wrp_msg, 2000);
-        if (rtn == 1) 
-        {
+
+    debug_print("parodus_receive_wait\n");
+    while( 1 ) {
+        rtn = libparodus_receive(hpd_instance, &wrp_msg, 2000);
+        debug_print("    rtn = %d\n", rtn);
+        if( 0 == rtn ) {
+            debug_info("Got something from parodus.\n");
+        } else if( 1 == rtn || 2 == rtn ) {
+            debug_info("Timed out or message closed.\n");
             continue;
+        } else {
+            debug_info("Libparodus failed to receive message: '%s'\n",libparodus_strerror(rtn));
         }
-        if (rtn != 0)
-        {
-            debug_error ("Libparodus failed to recieve message: '%s'\n",libparodus_strerror(rtn));
-            sleep(5);
-            continue;
+        if( NULL != wrp_msg ) {
+            free(wrp_msg);
         }
-        if (wrp_msg->msg_type == WRP_MSG_TYPE__REQ)
-        {
-            res_wrp_msg = (wrp_msg_t *)malloc(sizeof(wrp_msg_t));
-            memset(res_wrp_msg, 0, sizeof(wrp_msg_t));
-            debug_info("Request message : %s\n",(char *)wrp_msg->u.req.payload);
-            cJSON *response = cJSON_CreateObject();
-            cJSON_AddNumberToObject(response, "statusCode", 200);
-            cJSON_AddStringToObject(response, "message", "Success");
-            res_wrp_msg->u.req.payload = cJSON_PrintUnformatted(response);	
-            debug_info("Response payload is %s\n",(char *)(res_wrp_msg->u.req.payload));
-            res_wrp_msg->u.req.payload_size = strlen(res_wrp_msg->u.req.payload);
-            res_wrp_msg->msg_type = wrp_msg->msg_type;
-            res_wrp_msg->u.req.source = wrp_msg->u.req.dest;
-            res_wrp_msg->u.req.dest = wrp_msg->u.req.source;
-            res_wrp_msg->u.req.transaction_uuid = wrp_msg->u.req.transaction_uuid;
-            contentType = (char *)malloc(sizeof(char)*(strlen(CONTENT_TYPE_JSON)+1));
-            strncpy(contentType,CONTENT_TYPE_JSON,strlen(CONTENT_TYPE_JSON)+1);
-            res_wrp_msg->u.req.content_type = contentType;
-            int sendStatus = libparodus_send(hpd_instance, res_wrp_msg);     
-            debug_print("sendStatus is %d\n",sendStatus);
-            if(sendStatus == 0)
-            {
-                debug_info("Sent message successfully to parodus\n");
-            }
-            else
-            {
-                debug_error("Failed to send message: '%s'\n",libparodus_strerror(sendStatus));
-            }
-            wrp_free_struct (res_wrp_msg); 
-            if(response != NULL)
-            {
-                cJSON_Delete(response);
-            }
-        }
-        free(wrp_msg);
+        sleep(5);
     }
     libparodus_shutdown(&hpd_instance);
-    debug_print ("End of parodus_upstream\n");
+    debug_print("End of parodus_upstream\n");
     return 0;
 }
 
@@ -308,13 +269,10 @@ static void start_parodus_receive_thread()
     int err = 0;
     pthread_t threadId;
     err = pthread_create(&threadId, NULL, parodus_receive_wait, NULL);
-    if (err != 0) 
-    {
+    if( err != 0 ) {
         debug_error("Error creating thread :[%s]\n", strerror(err));
         exit(1);
-    }
-    else
-    {
+    } else {
         debug_print("Parodus Receive wait thread created Successfully %d\n", (int ) threadId);
     }    
 }
