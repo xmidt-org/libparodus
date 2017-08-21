@@ -94,7 +94,8 @@ Decoded recivedMsg of size:240
 [1503345617][hello-parodus][Debug]: sendStatus is 0
 ```
 3. The response to curl should be something similar to the following:-
-```HTTP/1.1 200 OK
+```
+HTTP/1.1 200 OK
 Content-Type: application/json
 Date: Sat, 19 Aug 2017 01:57:47 GMT
 X-Webpa-Device-Id: mac:123456789012
