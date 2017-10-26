@@ -22,6 +22,14 @@ add_library(${PROJ_PARODUS_LIB} STATIC ${HEADERS} ${SOURCES})
 add_library(${PROJ_PARODUS_LIB}.shared SHARED ${HEADERS} ${SOURCES})
 set_target_properties(${PROJ_PARODUS_LIB}.shared PROPERTIES OUTPUT_NAME ${PROJ_PARODUS_LIB})
 
+# ----------------------------------------------------------------------------
+# Note: This is a partial solution and only covers the case required for the
+# Yocto build (ie dynamic lib). Other cases may need fixing too.
+# ----------------------------------------------------------------------------
+if (BUILD_YOCTO)
+target_link_libraries(${PROJ_PARODUS_LIB}.shared m cjson nopoll wrp-c wdmp-c trower-base64 nanomsg msgpackc)
+endif (BUILD_YOCTO)
+
 install (TARGETS ${PROJ_PARODUS_LIB} DESTINATION lib${LIB_SUFFIX})
 install (TARGETS ${PROJ_PARODUS_LIB}.shared DESTINATION lib${LIB_SUFFIX})
 install (FILES libparodus.h DESTINATION include/${PROJ_PARODUS_LIB})
