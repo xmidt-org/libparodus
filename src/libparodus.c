@@ -64,7 +64,7 @@ typedef struct {
 	bool auth_received;
 } __instance_t;
 
-#define SOCK_SEND_TIMEOUT_MS 2000
+#define SOCK_SEND_TIMEOUT_MS 30000
 
 #define MAX_RECONNECT_RETRY_DELAY_SECS 63
 
@@ -942,6 +942,10 @@ static void *wrp_receiver_thread (void *arg)
 		rtn = sock_receive (inst->rcv_sock, &raw_msg, &exterr);
 		if (rtn != 0) {
 			if (rtn == 1) { // timed out
+				if (RUN_STATE_RUNNING != inst->run_state) {
+					nn_freemsg (raw_msg.msg);
+					break;
+				}
 				wrp_receiver_reconnect (inst);
 				continue;
 			}
