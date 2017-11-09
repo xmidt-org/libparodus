@@ -943,7 +943,6 @@ static void *wrp_receiver_thread (void *arg)
 		if (rtn != 0) {
 			if (rtn == 1) { // timed out
 				if (RUN_STATE_RUNNING != inst->run_state) {
-					nn_freemsg (raw_msg.msg);
 					break;
 				}
 				wrp_receiver_reconnect (inst);
