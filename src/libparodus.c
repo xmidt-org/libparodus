@@ -64,7 +64,7 @@ typedef struct {
 	bool auth_received;
 } __instance_t;
 
-#define SOCK_SEND_TIMEOUT_MS 30000
+#define SOCK_SEND_TIMEOUT_MS 2000
 
 #define MAX_RECONNECT_RETRY_DELAY_SECS 63
 
