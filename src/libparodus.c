@@ -994,20 +994,19 @@ static void *wrp_receiver_thread (void *arg)
 			wrp_free_struct (wrp_msg);
 			continue;
 		}
-                msg_service = strdup (msg_service + 1);
+                msg_service++;
+                size_t len = strlen(msg_service);
                 char *tmp = strchr (msg_service, '/');
                 if (NULL != tmp) {
-                    *tmp = '\0';
+                    len = (uintptr_t)tmp - (uintptr_t)msg_service;
                 }
-		if (strcmp (msg_service, inst->cfg.service_name) != 0) {
+		if (strncmp (msg_service, inst->cfg.service_name, len) != 0) {
 			wrp_free_struct (wrp_msg);
-                        free(msg_service);
 			continue;
 		}
 		libpd_log (LEVEL_DEBUG, ("LIBPARODUS: received msg directed to service %s\n",
 			inst->cfg.service_name));
 		libpd_qsend (inst->wrp_queue, (void *) wrp_msg, WRP_QUEUE_SEND_TIMEOUT_MS, &exterr);
-                free(msg_service);
 	}
 	libpd_log (LEVEL_INFO, ("Ended wrp receiver thread\n"));
 	return NULL;
