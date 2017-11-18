@@ -989,12 +989,16 @@ static void *wrp_receiver_thread (void *arg)
 			wrp_free_struct (wrp_msg);
 			continue;
 		}
-		msg_service = strrchr (msg_dest, '/');
+		msg_service = strchr (msg_dest, '/');
 		if (NULL == msg_service) {
 			wrp_free_struct (wrp_msg);
 			continue;
 		}
 		msg_service++;
+                char *tmp = strtok (msg_service, "/");
+                if (NULL != tmp) {
+                    msg_service = tmp;
+                }
 		if (strcmp (msg_service, inst->cfg.service_name) != 0) {
 			wrp_free_struct (wrp_msg);
 			continue;
