@@ -989,7 +989,7 @@ static void *wrp_receiver_thread (void *arg)
 			wrp_free_struct (wrp_msg);
 			continue;
 		}
-		msg_service = strrchr (msg_dest, '/');
+		msg_service = strchr (msg_dest, '/');
 		if (NULL == msg_service) {
 			wrp_free_struct (wrp_msg);
 			continue;
