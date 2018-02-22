@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -24,7 +25,6 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <sys/time.h>
-#include <sys/sysinfo.h>
 #include <pthread.h>
 
 #include <getopt.h>
@@ -35,6 +35,7 @@
 #include <nanomsg/nn.h>
 #include <nanomsg/pipeline.h>
 
+#include "dbg_err.h"
 
 /*----------------------------------------------------------------------------*/
 /*                                   Macros                                   */
@@ -148,17 +149,6 @@ static void processUpStreamTask();
 static void *processUpStreamHandler();
 static void handleUpStreamEvents();
 static void handleUpstreamMessage(wrp_msg_t *msg);
-
-static void dbg_err (int err, const char *fmt, ...)
-{
-		char errbuf[100];
-
-    va_list arg_ptr;
-    va_start(arg_ptr, fmt);
-    vprintf(fmt, arg_ptr);
-    va_end(arg_ptr);
-		printf ("%s\n", strerror_r (err, errbuf, 100));
-}
 
 static bool make_end_pipe_name (void)
 {

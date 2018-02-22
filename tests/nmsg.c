@@ -7,6 +7,8 @@
 #include <nanomsg/nn.h>
 #include <nanomsg/pipeline.h>
 
+#include "dbg_err.h"
+
 #define SOCK_SEND_TIMEOUT_MS 2000
 
 const char *rcv_id = NULL;
@@ -18,7 +20,6 @@ unsigned long send_count = 0;
 bool set_timeout = true;
 int rcv_sock = -1;
 int send_sock = -1;
-char errbuf[100];
 
 void make_url (char *urlbuf, const char *id)
 {
@@ -38,13 +39,12 @@ int connect_receiver (void)
 	make_url (rcv_url, rcv_id);
   sock = nn_socket (AF_SP, NN_PULL);
 	if (sock < 0) {
-		printf ("Unable to create rcv socket: %s\n",
-			strerror_r (errno, errbuf, 100));
+		dbg_err (errno, "Unable to create rcv socket\n");
  		return -1;
 	}
   if (nn_bind (sock, rcv_url) < 0) {
-		printf ("Unable to bind to receive socket %s: %s\n",
-			rcv_url, strerror_r (errno, errbuf, 100));
+		dbg_err (errno, "Unable to bind to receive socket %s\n",
+			rcv_url);
 		nn_close (sock);
 		return -1;
 	}
@@ -72,21 +72,20 @@ int connect_sender (void)
 	make_url (send_url, send_id);
   sock = nn_socket (AF_SP, NN_PUSH);
 	if (sock < 0) {
-		printf ("Unable to create send socket: %s\n",
-			strerror_r (errno, errbuf, 100));
+		dbg_err (errno, "Unable to create send socket\n");
  		return -1;
 	}
 	if (set_timeout)
 		if (nn_setsockopt (sock, NN_SOL_SOCKET, NN_SNDTIMEO, 
 					&send_timeout, sizeof (send_timeout)) < 0) {
-			printf ("Unable to set socket timeout: %s: %s\n",
-				send_url, strerror_r (errno, errbuf, 100));
+			dbg_err (errno, "Unable to set socket timeout: %s\n",
+				send_url);
 			nn_close (sock);
 	 		return -1;
 		}
   if (nn_connect (sock, send_url) < 0) {
-		printf ("Unable to connect to send socket %s: %s\n",
-			send_url, strerror_r (errno, errbuf, 100));
+		dbg_err (errno, "Unable to connect to send socket %s\n",
+			send_url);
 		nn_shutdown (sock, 0);
 		nn_close (sock);
 		return -1;
@@ -166,7 +165,7 @@ char *receive_msg (void)
   bytes = nn_recv (rcv_sock, &buf, NN_MSG, 0);
 
   if (bytes < 0) { 
-		printf ("Error receiving msg: %s\n", strerror_r (errno, errbuf, 100));
+		dbg_err (errno, "Error receiving msg\n");
 		return NULL;
 	}
 	printf ("RECEIVED \"%s\"\n", buf);
@@ -179,7 +178,7 @@ int send_msg (const char *msg)
   int bytes;
 	bytes = nn_send (send_sock, msg, sz_msg, 0);
   if (bytes < 0) { 
-		printf ("Error sending msg: %s\n", strerror_r (errno, errbuf, 100));
+		dbg_err (errno, "Error sending msg\n");
 		return -1;
 	}
   if (bytes != sz_msg) {

@@ -13,6 +13,9 @@
 #   limitations under the License.
 
 set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -W -g -fprofile-arcs -ftest-coverage -O0")
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_XOPEN_SOURCE=600")
+endif()
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -W  -g -fprofile-arcs -ftest-coverage -O0")
 set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fprofile-arcs -ftest-coverage -O0")
 
@@ -20,9 +23,12 @@ set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fprofile-arcs -ftest-cov
 #   test nano-msg centric code
 #-------------------------------------------------------------------------------
 add_test(NAME NMsgTest COMMAND nmsg)
-add_executable (nmsg nmsg.c)
-target_link_libraries (nmsg gcov cunit -lnanomsg -lm -lpthread)
+add_executable (nmsg nmsg.c dbg_err.c)
 
+target_link_libraries (nmsg cunit -lnanomsg -lm -lpthread)
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+target_link_libraries (nmsg gcov)
+endif()
 
 #-------------------------------------------------------------------------------
 #   test libparodus
@@ -36,7 +42,6 @@ add_executable (libpd
                 ../src/libparodus_queues.c)
 
 target_link_libraries (libpd
-                       gcov
                        cunit
                        -lwrp-c
                        -lmsgpackc
@@ -44,14 +49,16 @@ target_link_libraries (libpd
                        -lnanomsg
                        -lcimplog
                        -lm
-                       -lpthread
-                       -lrt)
-
+                       -lpthread)
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+target_link_libraries (libpd gcov)
+target_link_libraries (libpd rt)
+endif()
 
 #-------------------------------------------------------------------------------
 #   mock code
 #-------------------------------------------------------------------------------
-add_executable(mock_parodus mock_parodus.c)
+add_executable(mock_parodus mock_parodus.c dbg_err.c)
 
 target_link_libraries (mock_parodus
  -lwrp-c
