@@ -27,7 +27,7 @@ add_executable (nmsg nmsg.c dbg_err.c)
 
 target_link_libraries (nmsg cunit -lnanomsg -lm -lpthread)
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-target_link_libraries (libpd profile_rt)
+target_link_libraries (nmsg gcov)
 endif()
 
 #-------------------------------------------------------------------------------
@@ -51,7 +51,7 @@ target_link_libraries (libpd
                        -lm
                        -lpthread)
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-target_link_libraries (libpd profile_rt)
+target_link_libraries (libpd gcov)
 target_link_libraries (libpd rt)
 endif()
 
