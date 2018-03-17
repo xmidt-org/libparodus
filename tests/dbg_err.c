@@ -27,7 +27,6 @@ void dbg_err (int err, const char *fmt, ...)
     vprintf(fmt, arg_ptr);
     va_end(arg_ptr);
 
-#if _XOPEN_SOURCE >= 600
     if( 0 == strerror_r (err, errbuf, 100) )
     {   
         printf("%s\n", errbuf);
@@ -36,8 +35,5 @@ void dbg_err (int err, const char *fmt, ...)
     {   
         printf("strerror_r returned failure!\n");
     } 
-#elif !_XOPEN_SOURCE
-    printf ("%s\n", strerror_r (err, errbuf, 100));
-#endif
 }
 
