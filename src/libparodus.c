@@ -1051,11 +1051,9 @@ int test_send_wrp_queue_ok (libpd_mq_t wrp_queue, int *exterr)
 	wrp_msg_t *reg_msg = (wrp_msg_t *) malloc (sizeof(wrp_msg_t));
 	char *name;
 	reg_msg->msg_type = WRP_MSG_TYPE__SVC_REGISTRATION;
-	name = (char*) malloc (4);
-	strcpy (name, "iot");
+	name = strdup("iot");
 	reg_msg->u.reg.service_name = name;
-	name = (char *) malloc (strlen(PARODUS_CLIENT_URL) + 1);
-	strcpy (name, PARODUS_CLIENT_URL);
+	name = strdup(PARODUS_CLIENT_URL);
 	reg_msg->u.reg.url = name;
 	return libpd_qsend (wrp_queue, (void *) reg_msg, 
 		WRP_QUEUE_SEND_TIMEOUT_MS, exterr);
