@@ -36,9 +36,9 @@
 #define MOCK_MSG_COUNT 10
 #define MOCK_MSG_COUNT_STR "10"
 #define NUM_KEEP_ALIVE_MSGS 5
-#define TESTS_DIR_TAIL "/libparodus/tests"
-#define BUILD_DIR_TAIL "/libparodus/build"
-#define BUILD_TESTS_DIR_TAIL "/libparodus/build/tests"
+#define TESTS_DIR_TAIL "/tests"
+#define BUILD_DIR_TAIL "/build"
+#define BUILD_TESTS_DIR_TAIL "/build/tests"
 #define END_PIPE_MSG  "--END--\n"
 #define SEND_EVENT_MSGS 1
 
@@ -89,6 +89,7 @@ static void initEndKeypressHandler();
 static void *endKeypressHandlerTask();
 
 static pthread_t endKeypressThreadId;
+static pthread_t SecondReceiverThreadId;
 
 static const char *service_name1 = "iot";
 static const char *service_name2 = "config";
@@ -97,9 +98,11 @@ static bool using_mock = false;
 static bool no_mock_send_only_test = false;
 static bool do_send_blocking_test = false;
 static bool do_send_disconnect_test = false;
+static bool do_multiple_inst_test = false;
 static bool do_multiple_rcv_test = false;
 static bool connect_on_every_send = false;
 static bool do_multiple_inits_test = false;
+static bool switch_service_names = false;
 
 static libpd_instance_t test_instance1;
 static libpd_instance_t test_instance2;
@@ -179,6 +182,13 @@ int check_current_dir (void)
 	current_dir_len = strlen (current_dir_buf);
 	end_pos = current_dir + current_dir_len;
 
+	tail_len = strlen (BUILD_TESTS_DIR_TAIL);
+	pos = end_pos - tail_len;
+	if (strcmp (pos, BUILD_TESTS_DIR_TAIL) == 0) {
+		current_dir_id = CURRENT_DIR_IS_BUILD_TESTS;
+		return 0;
+	}
+
 	tail_len = strlen (TESTS_DIR_TAIL);
 	pos = end_pos - tail_len;
 	if (strcmp (pos, TESTS_DIR_TAIL) == 0) {
@@ -190,13 +200,6 @@ int check_current_dir (void)
 	pos = end_pos - tail_len;
 	if (strcmp (pos, BUILD_DIR_TAIL) == 0) {
 		current_dir_id = CURRENT_DIR_IS_BUILD;
-		return 0;
-	}
-
-	tail_len = strlen (BUILD_TESTS_DIR_TAIL);
-	pos = end_pos - tail_len;
-	if (strcmp (pos, BUILD_TESTS_DIR_TAIL) == 0) {
-		current_dir_id = CURRENT_DIR_IS_BUILD_TESTS;
 		return 0;
 	}
 
@@ -281,9 +284,10 @@ void show_wrp_event_msg (struct wrp_event_msg *msg)
 	show_src_dest_payload (msg->source, msg->dest, msg->payload, msg->payload_size);
 }
 
-void show_wrp_msg (wrp_msg_t *wrp_msg)
+void show_wrp_msg (wrp_msg_t *wrp_msg, int rcvr)
 {
-	libpd_log (LEVEL_INFO, ("Received WRP Msg type %d\n", wrp_msg->msg_type));
+	libpd_log (LEVEL_INFO, ("LIBPD_TEST: Rcvr %d Received WRP Msg type %d\n", 
+		rcvr, wrp_msg->msg_type));
 	if (wrp_msg->msg_type == WRP_MSG_TYPE__REQ) {
 		show_wrp_req_msg (&wrp_msg->u.req);
 		return;
@@ -750,6 +754,38 @@ void test_multiple_inits (void)
 	CU_ASSERT (rtn == 0);
 }
 
+static void *SecondReceiverTask()
+{
+  int rtn;
+  wrp_msg_t *wrp_msg;
+  unsigned reply_error_count = 0;
+  unsigned msgs_received_count = 0;
+
+	libpd_log (LEVEL_INFO, ("LIBPD_TEST: starting Rcvr 2 msg receive loop\n"));
+	while (true) {
+		rtn = libparodus_receive (test_instance1, &wrp_msg, 2000);
+		if (rtn == 1) {
+			libpd_log (LEVEL_INFO, ("LIBPD_TEST: Rcvr 2 Timed out waiting for msg\n"));
+			continue;
+		}
+		if (rtn != 0)
+			break;
+		show_wrp_msg (wrp_msg, 2);
+		if (wrp_msg->msg_type == WRP_MSG_TYPE__REQ)
+			if (send_reply (test_instance1, wrp_msg) != 0)
+				reply_error_count++;
+		wrp_free_struct (wrp_msg);
+		msgs_received_count++;
+	}
+	CU_ASSERT (reply_error_count == 0);
+	if (reply_error_count != 0) {
+		libpd_log (LEVEL_INFO, ("LIBPD_TEST: Rcvr 2 Reply Error Count %u\n", reply_error_count));
+	}
+	libpd_log (LEVEL_INFO, ("LIBPD_TEST: Rcvr 2 Messages received %u\n", msgs_received_count));
+	libparodus_close_receiver (test_instance1);
+	return NULL;
+}
+
 void test_1(void)
 {
 	unsigned msgs_received_count = 0;
@@ -911,6 +947,11 @@ void test_1(void)
 	if (using_mock) {
 		cfg1.keepalive_timeout_secs = 20;
 	}
+	if (switch_service_names) {
+		const char *tmp = cfg1.service_name;
+		cfg1.service_name = cfg2.service_name;
+		cfg2.service_name = tmp;
+	}
 	rtn = libparodus_init(&test_instance1, &cfg1);
 	CU_ASSERT_FATAL (rtn == 0);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: libparodus_init 1 successful\n"));
@@ -924,7 +965,7 @@ void test_1(void)
 			(test_instance1, wrp_msg) == LIBPD_ERROR_SEND_WRP_MSG);
 	//}
 	current_instance = test_instance1;
-	if (do_multiple_rcv_test)  {
+	if (do_multiple_inst_test)  {
 		cfg2.receive = true;
 		cfg2.client_url = GOOD_CLIENT_URL2;
 		rtn = libparodus_init(&test_instance2, &cfg2);
@@ -932,10 +973,20 @@ void test_1(void)
 		libpd_log (LEVEL_INFO, ("LIBPD_TEST: libparodus_init 2 successful\n"));
 		current_instance = test_instance2;
 	}
-	libpd_log (LEVEL_INFO, ("LIBPD_TEST: starting msg receive loop\n"));
+	if (do_multiple_rcv_test) {
+		int err = pthread_create(&SecondReceiverThreadId, NULL, 
+			SecondReceiverTask, NULL);
+		if (err != 0) 
+		{
+		  libpd_log_err (LEVEL_ERROR, err, 
+			("Error creating second receiver thread\n"));
+		  do_multiple_rcv_test = false;
+		}
+	}
+	libpd_log (LEVEL_INFO, ("LIBPD_TEST: starting Rcvr 1 msg receive loop\n"));
 	reply_error_count = 0;
 	while (true) {
-		if (do_multiple_rcv_test) {
+		if (do_multiple_inst_test) {
 			if (current_instance == test_instance1)
 				current_instance = test_instance2;
 			else
@@ -943,7 +994,7 @@ void test_1(void)
 		}
 		rtn = libparodus_receive (current_instance, &wrp_msg, 2000);
 		if (rtn == 1) {
-			libpd_log (LEVEL_INFO, ("LIBPD_TEST: Timed out waiting for msg\n"));
+			libpd_log (LEVEL_INFO, ("LIBPD_TEST: Rcvr 1 Timed out waiting for msg\n"));
 			if (current_instance != test_instance1)
 				continue;
 #ifdef MOCK_MSG_COUNT
@@ -963,7 +1014,7 @@ void test_1(void)
 		}
 		if (rtn != 0)
 			break;
-		show_wrp_msg (wrp_msg);
+		show_wrp_msg (wrp_msg, 1);
 		if (wrp_msg->msg_type == WRP_MSG_TYPE__REQ)
 			if (send_reply (current_instance, wrp_msg) != 0)
 				reply_error_count++;
@@ -977,7 +1028,7 @@ void test_1(void)
 	}
 	CU_ASSERT (reply_error_count == 0);
 	if (reply_error_count != 0) {
-		libpd_log (LEVEL_INFO, ("Reply Error Count %u\n", reply_error_count));
+		libpd_log (LEVEL_INFO, ("LIBPD_TEST: Rcvr 1 Reply Error Count %u\n", reply_error_count));
 	}
 	if (using_mock) {
 		libpd_log (LEVEL_INFO, ("Keep alive msgs received %d\n", keep_alive_count));
@@ -996,10 +1047,13 @@ void test_1(void)
 			close (end_pipe_fd);
 			wait (NULL);
 		}
+	} else if (do_multiple_rcv_test) {
+		libparodus_close_receiver (test_instance1);
+		pthread_join (SecondReceiverThreadId, NULL);
 	}
-	libpd_log (LEVEL_INFO, ("Messages received %u\n", msgs_received_count));
+	libpd_log (LEVEL_INFO, ("LIBPD_TEST: Rcvr 1 Messages received %u\n", msgs_received_count));
 	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
-	if (do_multiple_rcv_test) {
+	if (do_multiple_inst_test) {
 		CU_ASSERT (libparodus_shutdown (&test_instance2) == 0);
 	}
 }
@@ -1061,8 +1115,10 @@ int main( int argc, char **argv __attribute__((unused)) )
 			const char *arg = argv[1];
 			if ((arg[0] == 's') || (arg[0] == 'S'))
 				no_mock_send_only_test = true;
-			if ((arg[0] == 'm') || (arg[0] == 'M'))
+			if ((arg[0] == 'r') || (arg[0] == 'R'))
 				do_multiple_rcv_test = true;
+			if ((arg[0] == 'm') || (arg[0] == 'M'))
+				do_multiple_inst_test = true;
 			if ((arg[0] == 'b') || (arg[0] == 'B')) {
 				using_mock = true;
 				do_send_blocking_test = true;
@@ -1079,6 +1135,10 @@ int main( int argc, char **argv __attribute__((unused)) )
 				using_mock = true;
 				connect_on_every_send = true;
 			}
+			if (arg[0] == '2') {
+				switch_service_names = true;
+			}
+		
 		}
 
     if( CUE_SUCCESS == CU_initialize_registry() ) {

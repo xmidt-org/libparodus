@@ -32,6 +32,7 @@ typedef struct {
 	const char *parodus_url;
 	const char *client_url;
 	unsigned test_flags;  // always 0 except when testing
+	unsigned max_threads;
 } libpd_cfg_t;
 
 typedef void *libpd_instance_t;
@@ -93,6 +94,11 @@ typedef enum {
 	 */
 	LIBPD_ERROR_RCV_RCV = -204,
 	/** 
+	 * @brief Error on libparodus_receive
+	 * thread limit exceeded
+	 */
+	LIBPD_ERROR_RCV_THR_LIMIT = -205,
+	/** 
 	 * @brief Error on libparodus_close_receiver
 	 * null instance given
 	 */
@@ -118,6 +124,11 @@ typedef enum {
 	 */
 	LIBPD_ERROR_CLOSE_RCV_SEND = -305,
 	/** 
+	 * @brief Error on libparodus_close_receiver
+	 * thread limit exceeded
+	 */
+	LIBPD_ERROR_CLOSE_RCV_THR_LIMIT = -306,
+	/** 
 	 * @brief Error on libparodus_send
 	 * null instance given
 	 */
@@ -137,6 +148,11 @@ typedef enum {
 	 * socket send error
 	 */
 	LIBPD_ERROR_SEND_SOCKET = -404,
+	/** 
+	 * @brief Error on libparodus_send
+	 * thread limit exceeded
+	 */
+	LIBPD_ERROR_SEND_THR_LIMIT = -405
 } libpd_error_t;
 
 /**

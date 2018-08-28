@@ -75,6 +75,11 @@ typedef enum {
 	 */
 	LIBPD_QERR_SEND_CONDWAIT = -0x2040,
 	/** 
+	 * @brief Error on libpd_qsend
+	 * error on get_expire_time
+	 */
+	LIBPD_QERR_SEND_EXPTIME = -0x2041,
+	/** 
 	 * @brief Error on libpd_qreceive
 	 */
 	LIBPD_QERR_RCV = -0x3000,
@@ -87,7 +92,12 @@ typedef enum {
 	 * @brief Error on libpd_qreceive
 	 * error on cond wait
 	 */
-	LIBPD_QERR_RCV_CONDWAIT = -0x3040
+	LIBPD_QERR_RCV_CONDWAIT = -0x3040,
+	/** 
+	 * @brief Error on libpd_qreceive
+	 * error on get_expire_time
+	 */
+	LIBPD_QERR_RCV_EXPTIME = -0x3041
 
 } libpd_qerror_t;
 

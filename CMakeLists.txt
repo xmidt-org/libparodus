@@ -106,7 +106,7 @@ add_dependencies(libcimplog cimplog)
 ExternalProject_Add(msgpack
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/_prefix/msgpack
     GIT_REPOSITORY https://github.com/msgpack/msgpack-c.git
-    GIT_TAG "c6e6dbc608366090c12b142b3832604e6aa12f54"
+    #GIT_TAG "c6e6dbc608366090c12b142b3832604e6aa12f54"
     CMAKE_ARGS += -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}
                   -DMSGPACK_ENABLE_CXX=OFF
                   -DMSGPACK_BUILD_EXAMPLES=OFF

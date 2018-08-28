@@ -269,6 +269,11 @@ typedef enum {
 	 */
 	LIBPD_ERR_RCV_QUEUE_CONDWAIT = -0xB3040,
 	/** 
+	 * @brief Error on libparodus receive
+	 * error on queue gettimeofday
+	 */
+	LIBPD_ERR_RCV_QUEUE_EXPTIME = -0xB3041,
+	/** 
 	 * @brief Error on libparodus_close_receiver
 	 */
 	LIBPD_ERR_CLOSE_RCV = -0xE0000,
@@ -307,6 +312,11 @@ typedef enum {
 	 * error on cond wait in queue send
 	 */
 	LIBPD_ERR_CLOSE_RCV_QSEND_CONDWAIT = -0xE2040,
+	/** 
+	 * @brief Error on libparodus_close_receiver
+	 * error on gettimeofday in queue send
+	 */
+	LIBPD_ERR_CLOSE_RCV_QSEND_EXPTIME = -0xE2041,
 	/** 
 	 * @brief Error on libparodus_shutdown
 	 */
@@ -385,8 +395,16 @@ typedef enum {
  *
  * @param exterr exterr of last libparodus call
  * @return err of last libparodus call
+ * 
+ * @note assumes you are in same thread as last call
  */
 int __libparodus_err (libpd_instance_t instance, int *exterr);
+
+typedef struct {
+	pthread_t thread_id;
+	int err;	// err of last api call
+	int exterr;	// os err of last api call
+} error_item_t;
 
 
 /**
