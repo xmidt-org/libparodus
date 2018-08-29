@@ -286,6 +286,9 @@ void show_wrp_event_msg (struct wrp_event_msg *msg)
 
 void show_wrp_msg (wrp_msg_t *wrp_msg, int rcvr)
 {
+#ifndef TEST_ENVIRONMENT
+	(void) (rcvr);
+#endif
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: Rcvr %d Received WRP Msg type %d\n", 
 		rcvr, wrp_msg->msg_type));
 	if (wrp_msg->msg_type == WRP_MSG_TYPE__REQ) {

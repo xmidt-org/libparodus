@@ -235,6 +235,10 @@ error_item_t *find_my_error_info (__instance_t *inst, bool zero_it)
 const char *libparodus_strerror (libpd_error_t err)
 {
 	unsigned i;
+	
+	if (0 == err)
+	  return "libparodus success";
+	  
 	for (i=0; i<NUM_ERROR_MSGS; i++) {
 		if (err == error_msg_table[i].error_code)
 			return error_msg_table[i].error_msg;
