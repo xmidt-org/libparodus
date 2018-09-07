@@ -109,15 +109,15 @@ static libpd_instance_t test_instance2;
 
 // libparodus functions to be tested
 extern void test_set_cfg (libpd_cfg_t *new_cfg);
-extern int flush_wrp_queue (libpd_mq_t wrp_queue, uint32_t delay_ms);
+extern int flush_wrp_queue (libpd_mq_t wrp_queue, uint32_t delay_ms, int *oserr);
 extern int connect_receiver 
-	(const char *rcv_url, int keepalive_timeout_secs, int *exterr);
-extern int connect_sender (const char *send_url, int *exterr);
+	(const char *rcv_url, int keepalive_timeout_secs, int *oserr);
+extern int connect_sender (const char *send_url, int *oserr);
 extern void shutdown_socket (int *sock);
 
 extern bool is_auth_received (void);
 extern int libparodus_receive__ (libpd_mq_t wrp_queue, 
-	wrp_msg_t **msg, uint32_t ms, int *exterr);
+	wrp_msg_t **msg, uint32_t ms, int *oserr);
 
 // libparodus_log functions to be tested
 extern int get_valid_file_num (const char *file_name, const char *date);
@@ -125,10 +125,10 @@ extern int get_last_file_num_in_dir (const char *date, const char *log_dir);
 
 // test helper functions defined in libparodus
 extern int test_create_wrp_queue 
-	(libpd_mq_t *wrp_queue, const char *wrp_queue_name, int *exterr);
+	(libpd_mq_t *wrp_queue, const char *wrp_queue_name, int *oserr);
 extern void test_close_wrp_queue (libpd_mq_t *wrp_queue);
-extern int  test_close_receiver (libpd_instance_t instance, int *exterr);
-extern void test_send_wrp_queue_ok (libpd_mq_t wrp_queue, int *exterr);
+extern int  test_close_receiver (libpd_instance_t instance, int *oserr);
+extern void test_send_wrp_queue_ok (libpd_mq_t wrp_queue, int *oserr);
 extern void test_get_counts (libpd_instance_t instance, 
 	int *keep_alive_count, int *reconnect_count);
 
@@ -716,7 +716,8 @@ void test_send_only (void)
 void test_multiple_inits (void)
 {
 	#define NUM_INSTANCES 1000
-	int i, rtn, oserr, shutdown_ct;
+	int i, rtn, shutdown_ct;
+	extra_err_info_t err_info;
 	libpd_cfg_t cfg1 = {.service_name = service_name1,
 		.receive = false, .keepalive_timeout_secs = 0,
 		.parodus_url = GOOD_PARODUS_URL, .client_url = GOOD_CLIENT_URL};
@@ -724,7 +725,7 @@ void test_multiple_inits (void)
 
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: Test many instances\n"));
 	for (i=0; i<NUM_INSTANCES; i++) {
-		rtn = libparodus_init(&instance_table[i], &cfg1);
+		rtn = libparodus_init_dbg(&instance_table[i], &cfg1, &err_info);
 		if (rtn != 0)
 			break;
 	}
@@ -735,10 +736,9 @@ void test_multiple_inits (void)
 			("LIBPD_TEST: init failed with code %d after %d instances\n", rtn, i));
 		CU_ASSERT (rtn == LIBPD_ERROR_INIT_CONNECT);
 		if (rtn != LIBPD_ERROR_INIT_INST) {
-			int libpd_err = __libparodus_err (instance_table[i], &oserr);
-			libpd_log_err (LEVEL_INFO, oserr,
-				("LIBPD_TEST: init err (%x)\n", -libpd_err));
-			CU_ASSERT (libpd_err == LIBPD_ERR_INIT_SEND_CREATE);
+			libpd_log_err (LEVEL_INFO, err_info.oserr,
+				("LIBPD_TEST: init err (%x)\n", -err_info.err_detail));
+			CU_ASSERT (err_info.err_detail == LIBPD_ERR_INIT_SEND_CREATE);
 			rtn = libparodus_shutdown (&instance_table[i]);
 			if (rtn == 0)
 				shutdown_ct++;
@@ -795,9 +795,10 @@ void test_1(void)
 	unsigned timeout_cnt = 0;
 	unsigned reply_error_count = 0;
 	int reconnect_count, keep_alive_count;
-	int rtn, exterr;
+	int rtn, oserr;
 	int test_sock, dup_sock;
 	libpd_mq_t test_queue;
+	extra_err_info_t err_info;
 	wrp_msg_t *wrp_msg;
 	unsigned event_num = 0;
 	unsigned msg_num = 0;
@@ -816,55 +817,55 @@ void test_1(void)
 
 	//test_set_cfg (&cfg);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect receiver, good IP\n"));
-	test_sock = connect_receiver (TEST_RCV_URL, 20, &exterr);
+	test_sock = connect_receiver (TEST_RCV_URL, 20, &oserr);
 	CU_ASSERT (test_sock >= 0) ;
 	if (test_sock >= 0)
 		shutdown_socket(&test_sock);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect receiver, bad IP\n"));
-	test_sock = connect_receiver (BAD_RCV_URL, 0, &exterr);
+	test_sock = connect_receiver (BAD_RCV_URL, 0, &oserr);
 	CU_ASSERT (test_sock < 0);
-	CU_ASSERT (exterr == EINVAL);
+	CU_ASSERT (oserr == EINVAL);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect receiver, good IP\n"));
-	test_sock = connect_receiver (TEST_RCV_URL, 20, &exterr);
+	test_sock = connect_receiver (TEST_RCV_URL, 20, &oserr);
 	CU_ASSERT (test_sock >= 0) ;
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect duplicate receiver\n"));
-	dup_sock = connect_receiver (TEST_RCV_URL, 20, &exterr);
+	dup_sock = connect_receiver (TEST_RCV_URL, 20, &oserr);
 	CU_ASSERT (dup_sock < 0);
-	CU_ASSERT (exterr == EADDRINUSE);
+	CU_ASSERT (oserr == EADDRINUSE);
 	if (test_sock >= 0)
 		shutdown_socket(&test_sock);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect sender, good IP\n"));
-	test_sock = connect_sender (TEST_SEND_URL, &exterr);
+	test_sock = connect_sender (TEST_SEND_URL, &oserr);
 	CU_ASSERT (test_sock >= 0) ;
 	if (test_sock >= 0)
 		shutdown_socket(&test_sock);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect sender, bad IP\n"));
-	test_sock = connect_sender (BAD_SEND_URL, &exterr);
+	test_sock = connect_sender (BAD_SEND_URL, &oserr);
 	CU_ASSERT (test_sock < 0);
-	CU_ASSERT (exterr == EINVAL);
+	CU_ASSERT (oserr == EINVAL);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test create wrp queue\n"));
-	CU_ASSERT (test_create_wrp_queue (&test_queue, "/TEST_QUEUE", &exterr) == 0);
+	CU_ASSERT (test_create_wrp_queue (&test_queue, "/TEST_QUEUE", &oserr) == 0);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test libparodus receive good\n"));
-	test_send_wrp_queue_ok (test_queue, &exterr);
-	CU_ASSERT (libparodus_receive__ (test_queue, &wrp_msg, 500, &exterr) == 0);
+	test_send_wrp_queue_ok (test_queue, &oserr);
+	CU_ASSERT (libparodus_receive__ (test_queue, &wrp_msg, 500, &oserr) == 0);
 	wrp_free_struct (wrp_msg);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test wrp_flush_queue\n"));
-	test_send_wrp_queue_ok (test_queue, &exterr);
-	test_send_wrp_queue_ok (test_queue, &exterr);
-	test_send_wrp_queue_ok (test_queue, &exterr);
-	CU_ASSERT (flush_wrp_queue (test_queue, 500) == 3);
-	CU_ASSERT (flush_wrp_queue (test_queue, 500) == 0);
+	test_send_wrp_queue_ok (test_queue, &oserr);
+	test_send_wrp_queue_ok (test_queue, &oserr);
+	test_send_wrp_queue_ok (test_queue, &oserr);
+	CU_ASSERT (flush_wrp_queue (test_queue, 500, &oserr) == 3);
+	CU_ASSERT (flush_wrp_queue (test_queue, 500, &oserr) == 0);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test wrp_flush_queue with close msg\n"));
-	test_send_wrp_queue_ok (test_queue, &exterr);
-	test_send_wrp_queue_ok (test_queue, &exterr);
-	test_close_receiver (test_queue, &exterr);
-	CU_ASSERT (flush_wrp_queue (test_queue, 500) == 3);
+	test_send_wrp_queue_ok (test_queue, &oserr);
+	test_send_wrp_queue_ok (test_queue, &oserr);
+	test_close_receiver (test_queue, &oserr);
+	CU_ASSERT (flush_wrp_queue (test_queue, 500, &oserr) == 3);
 
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test libparodus receive timeout\n"));
-	CU_ASSERT (libparodus_receive__ (test_queue, &wrp_msg, 500, &exterr) == 1);
-	CU_ASSERT (test_close_receiver (test_queue, &exterr) == 0);
+	CU_ASSERT (libparodus_receive__ (test_queue, &wrp_msg, 500, &oserr) == 1);
+	CU_ASSERT (test_close_receiver (test_queue, &oserr) == 0);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test libparodus receive close msg\n"));
-	rtn = libparodus_receive__ (test_queue, &wrp_msg, 500, &exterr);
+	rtn = libparodus_receive__ (test_queue, &wrp_msg, 500, &oserr);
 	if (rtn != 2) {
 		libpd_log (LEVEL_INFO, ("LIBPD_TEST: expected receive rtn==2 after close, got %d\n", rtn));
 	}
@@ -873,7 +874,7 @@ void test_1(void)
 	test_close_wrp_queue (&test_queue); 
 
 	CU_ASSERT (libparodus_receive__ 
-		(test_queue, &wrp_msg, 500, &exterr) == LIBPD_ERR_RCV_QUEUE_NULL);
+		(test_queue, &wrp_msg, 500, &oserr) == LIBPD_ERR_RCV_QUEUE_NULL);
 
 	rtn = libparodus_receive (null_instance, &wrp_msg, 500);
 	CU_ASSERT (rtn == LIBPD_ERROR_RCV_NULL_INST);
@@ -891,11 +892,11 @@ void test_1(void)
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: libparodus_init bad parodus ip\n"));
 	cfg1.receive = true;
 	cfg1.parodus_url = BAD_PARODUS_URL;
-	CU_ASSERT (libparodus_init (&test_instance1, &cfg1) == LIBPD_ERROR_INIT_CFG);
-	rtn = __libparodus_err (test_instance1, &exterr);
-  libpd_log (LEVEL_INFO, ("LIBPD_TEST: rtn %x, exterr %d\n", rtn, exterr));
-	CU_ASSERT (rtn == LIBPD_ERR_INIT_SEND_CONN);
-	CU_ASSERT (exterr == EINVAL);
+	CU_ASSERT (libparodus_init_dbg (&test_instance1, &cfg1, &err_info) == LIBPD_ERROR_INIT_CFG);
+        libpd_log (LEVEL_INFO, ("LIBPD_TEST: rtn %x, oserr %d\n", 
+            err_info.errdetail, err_info.oserr));
+	CU_ASSERT (err_info.err_detail == LIBPD_ERR_INIT_SEND_CONN);
+	CU_ASSERT (err_info.oserr == EINVAL);
 	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
 	cfg1.parodus_url = GOOD_PARODUS_URL;
 	cfg1.client_url = BAD_CLIENT_URL;

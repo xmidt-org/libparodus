@@ -45,18 +45,8 @@
 #define URL_SIZE 32
 
 
-#define DEFAULT_MAX_THREADS 4
-
-typedef struct {
-	pthread_mutex_t err_mutex;
-	unsigned max_threads;
-	unsigned num_threads;
-	error_item_t *errors;
-} error_list_t;
- 
 typedef struct {
 	int run_state;
-	error_list_t errors;
 	const char *parodus_url;
 	const char *client_url;
 	int keep_alive_count;
@@ -68,9 +58,9 @@ typedef struct {
 	int send_sock;
 	char *wrp_queue_name;
 	libpd_mq_t wrp_queue;
+	extra_err_info_t rcv_err_info;
 	pthread_t wrp_receiver_tid;
 	pthread_mutex_t send_mutex;
-	error_item_t *rcv_thread_err;
 	bool auth_received;
 } __instance_t;
 
@@ -94,10 +84,10 @@ typedef struct {
 
 const char *wrp_qname_hdr = WRP_QNAME_HDR;
 
-int flush_wrp_queue (libpd_mq_t wrp_queue, uint32_t delay_ms);
-static int wrp_sock_send (__instance_t *inst, wrp_msg_t *msg, error_item_t *err);
+int flush_wrp_queue (libpd_mq_t wrp_queue, uint32_t delay_ms, int *exterr);
+static int wrp_sock_send (__instance_t *inst, wrp_msg_t *msg, extra_err_info_t *err_info);
 static void *wrp_receiver_thread (void *arg);
-static void libparodus_shutdown__ (__instance_t *inst);
+static void libparodus_shutdown__ (__instance_t *inst, extra_err_info_t *err_info);
 
 #define RUN_STATE_RUNNING		1234
 #define RUN_STATE_DONE			-1234
@@ -158,79 +148,6 @@ err_table_item_t error_msg_table[] = {
 
 #define NUM_ERROR_MSGS ( (sizeof error_msg_table) / sizeof(err_table_item_t) )
 
-int get_max_threads (libpd_cfg_t *cfg)
-{
-  int max_threads = cfg->max_threads;
-  int min_threads = 1;
-  if (cfg->receive)
-    min_threads = 2;
-  if (0 == max_threads)
-    max_threads = DEFAULT_MAX_THREADS;
-  if (max_threads > 10)
-    return 10;
-  if (max_threads < min_threads)
-    return min_threads;
-  return max_threads; 
-}
-		
-int init_error_list (error_list_t *errors, libpd_cfg_t *cfg)
-{
-	int max_threads = get_max_threads (cfg);
-	pthread_mutex_init (&errors->err_mutex, NULL);
-	errors->max_threads = max_threads;
-	errors->num_threads = 0;
-	errors->errors = (error_item_t *) malloc (max_threads * sizeof(error_item_t));
-	if (NULL == errors->errors) {
-		libpd_log (LEVEL_ERROR, ("LIBPARODUS: unable to allocate error_list\n"));
-		return -1;
-	}
-	return 0;
-}
-
-void destroy_error_list (error_list_t *errors)
-{
-	pthread_mutex_destroy (&errors->err_mutex);
-	free (errors->errors);
-	errors->num_threads = 0;
-}
-
-void add_thread_to_err_list (error_list_t *errors, pthread_t thread_id)
-{
-  unsigned index = errors->num_threads;
-  errors->errors[index].thread_id = thread_id;
-  errors->errors[index].err = 0;
-  errors->errors[index].exterr = 0;
-  errors->num_threads = index+1;
-  
-}
-
-error_item_t *find_my_error_info (__instance_t *inst, bool zero_it)
-{
-	error_list_t *errors = &inst->errors;
-	pthread_t me = pthread_self();
-	unsigned i, num_threads;
-	
-	pthread_mutex_lock (&errors->err_mutex);
-	num_threads = errors->num_threads;
-	for (i=0; i<num_threads; i++)
-	  if (pthread_equal (me, errors->errors[i].thread_id)) {
-	  	pthread_mutex_unlock (&errors->err_mutex);
-		if (zero_it) {
-			errors->errors[i].err = 0;
-			errors->errors[i].exterr = 0;
-		}
-		return &errors->errors[i];
-	  }
-	if (num_threads < errors->max_threads) {
-	  add_thread_to_err_list (errors, me);
-   	  pthread_mutex_unlock (&errors->err_mutex);
-	  return &errors->errors[num_threads];
-	}
-	pthread_mutex_unlock (&errors->err_mutex);
-	libpd_log (LEVEL_ERROR, 
-		("LIBPARODUS: max threads (%u) exceeded\n", errors->max_threads));
-	return NULL;  
-}
 
 const char *libparodus_strerror (libpd_error_t err)
 {
@@ -246,23 +163,6 @@ const char *libparodus_strerror (libpd_error_t err)
 	return "Unknown libparodus error";
 }
 
-int __libparodus_err (libpd_instance_t instance, int *exterr)
-{
-	__instance_t *inst = (__instance_t*) instance;
-	error_item_t *err_item;
-	int err = 0;
-	int oserr = 0;
-	if (NULL != inst) {
-		err_item = find_my_error_info (inst, false);
-		if (NULL != err_item) {
-			err = err_item->err;
-			oserr = err_item->exterr;
-		}
-	}
-	if (NULL != exterr)
-		*exterr = oserr;
-	return err;
-}
 
 static void getParodusUrl(__instance_t *inst)
 {
@@ -296,11 +196,6 @@ static __instance_t *make_new_instance (libpd_cfg_t *cfg)
 		return NULL;
 	}
 	memset ((void*) inst, 0, sizeof(__instance_t));
-	if (init_error_list (&inst->errors, cfg) != 0) {
-		free (wrp_queue_name);
-		free (inst);
-		return NULL;
-	}
 	inst->wrp_queue_name = wrp_queue_name;
 	pthread_mutex_init (&inst->send_mutex, NULL);
 	//inst->cfg = *cfg;
@@ -318,7 +213,6 @@ static void destroy_instance (libpd_instance_t *instance)
 		if (NULL != inst) {
 			if (NULL != inst->wrp_queue_name)
 				free (inst->wrp_queue_name);
-			destroy_error_list (&inst->errors);
 			pthread_mutex_destroy (&inst->send_mutex);
 			free (inst);
 			*instance = NULL;
@@ -372,18 +266,18 @@ typedef enum {
 /**
  * Open receive socket and bind to it.
  */
-int connect_receiver (const char *rcv_url, int keepalive_timeout_secs, int *exterr)
+int connect_receiver (const char *rcv_url, int keepalive_timeout_secs, int *oserr)
 {
 	int rcv_timeout;
 	int sock;
 
-	*exterr = 0;
+	*oserr = 0;
 	if (NULL == rcv_url) {
 		return CONN_RCV_ERR_NULL_URL;
 	}
   sock = nn_socket (AF_SP, NN_PULL);
 	if (sock < 0) {
-		*exterr = errno;
+		*oserr = errno;
 		libpd_log_err (LEVEL_ERROR, errno, ("Unable to create rcv socket %s\n", rcv_url));
  		return CONN_RCV_ERR_CREATE;
 	}
@@ -391,14 +285,14 @@ int connect_receiver (const char *rcv_url, int keepalive_timeout_secs, int *exte
 		rcv_timeout = keepalive_timeout_secs * 1000;
 		if (nn_setsockopt (sock, NN_SOL_SOCKET, NN_RCVTIMEO, 
 					&rcv_timeout, sizeof (rcv_timeout)) < 0) {
-			*exterr = errno;
+			*oserr = errno;
 			libpd_log_err (LEVEL_ERROR, errno, ("Unable to set socket timeout: %s\n", rcv_url));
 			shutdown_socket (&sock);
  			return CONN_RCV_ERR_SETOPT;
 		}
 	}
   if (nn_bind (sock, rcv_url) < 0) {
-		*exterr = errno;
+		*oserr = errno;
 		libpd_log_err (LEVEL_ERROR, errno, ("Unable to bind to receive socket %s\n", rcv_url));
 		shutdown_socket (&sock);
 		return CONN_RCV_ERR_BIND;
@@ -432,30 +326,30 @@ typedef enum {
 /**
  * Open send socket and connect to it.
  */
-int connect_sender (const char *send_url, int *exterr)
+int connect_sender (const char *send_url, int *oserr)
 {
 	int sock;
 	int send_timeout = SOCK_SEND_TIMEOUT_MS;
 
-	*exterr = 0;
+	*oserr = 0;
 	if (NULL == send_url) {
 		return CONN_SEND_ERR_NULL;
 	}
   sock = nn_socket (AF_SP, NN_PUSH);
 	if (sock < 0) {
-		*exterr = errno;
+		*oserr = errno;
 		libpd_log_err (LEVEL_ERROR, errno, ("Unable to create send socket: %s\n", send_url));
  		return CONN_SEND_ERR_CREATE;
 	}
 	if (nn_setsockopt (sock, NN_SOL_SOCKET, NN_SNDTIMEO, 
 				&send_timeout, sizeof (send_timeout)) < 0) {
-		*exterr = errno;
+		*oserr = errno;
 		libpd_log_err (LEVEL_ERROR, errno, ("Unable to set socket timeout: %s\n", send_url));
 		shutdown_socket (&sock);
  		return CONN_SEND_ERR_SETOPT;
 	}
   if (nn_connect (sock, send_url) < 0) {
-		*exterr = errno;
+		*oserr = errno;
 		libpd_log_err (LEVEL_ERROR, errno, ("Unable to connect to send socket %s\n",
 			send_url));
 		shutdown_socket (&sock);
@@ -534,7 +428,7 @@ typedef enum {
 	WRP_SEND_ERR_NN = -0x840
 } wrp_sock_send_error_t;
 
-static int send_registration_msg (__instance_t *inst, error_item_t *err)
+static int send_registration_msg (__instance_t *inst, extra_err_info_t *err)
 {
 	wrp_msg_t reg_msg;
 	reg_msg.msg_type = WRP_MSG_TYPE__SVC_REGISTRATION;
@@ -570,25 +464,24 @@ static void abort_init (__instance_t *inst, unsigned opt)
 			shutdown_socket(&inst->stop_rcv_sock);
 }
 
-int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
+int libparodus_init_dbg (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg,
+    extra_err_info_t *err_info)
 {
 	bool need_to_send_registration;
 	int err;
 	int oserr = 0;
 	__instance_t *inst = make_new_instance (libpd_cfg);
-	error_list_t *err_list = &inst->errors;
-	error_item_t *error0 = &err_list->errors[0];
-#define SETERR(oserr,err_) \
-	error0->err = err_; \
-	error0->exterr = oserr; \
+#define SETERR(oserr_,err_) \
+	err_info->err_detail = err_; \
+	err_info->oserr = oserr_; \
 	// errno = oserr
 #define CONNECT_ERR(oserr) \
 	(oserr == EINVAL) ? LIBPD_ERROR_INIT_CFG : LIBPD_ERROR_INIT_CONNECT
 
-	add_thread_to_err_list (err_list, pthread_self());
 	// err_list->num_threads will now be 1
 	if (NULL == inst) {
 		libpd_log (LEVEL_ERROR, ("LIBPARODUS: unable to allocate new instance\n"));
+		SETERR (0, LIBPD_ERR_INIT_INST);
 		return LIBPD_ERROR_INIT_INST;
 	}
 	*instance = (libpd_instance_t) inst;
@@ -642,9 +535,6 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
 			SETERR (err, LIBPD_ERR_INIT_RCV_THREAD_PCR);
 			return LIBPD_ERROR_INIT_RCV_THREAD;
 		}
-		add_thread_to_err_list (err_list, inst->wrp_receiver_tid);
-		// err_list->num_threads will now be 2
-		inst->rcv_thread_err = &err_list->errors[err_list->num_threads-1];
 	}
 
 
@@ -666,30 +556,38 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
 
 	if (need_to_send_registration) {
 		libpd_log (LEVEL_INFO, ("LIBPARODUS: sending registration msg\n"));
-		err = send_registration_msg (inst, error0);
+		err = send_registration_msg (inst, err_info);
 		if (err != 0) {
 			libpd_log (LEVEL_ERROR, ("LIBPARODUS: error sending registration msg\n"));
-			oserr = error0->exterr;
-			libparodus_shutdown__ (inst);
-			error0->err = LIBPD_ERR_INIT_REGISTER + err;
-			error0->exterr = oserr;
+			oserr = err_info->oserr;
+			libparodus_shutdown__ (inst, err_info);
+			// put back err_info from send_registration_msg
+			err_info->err_detail = LIBPD_ERR_INIT_REGISTER + err;
+			err_info->oserr = oserr;
 			return LIBPD_ERROR_INIT_REGISTER;
 		}
 		libpd_log (LEVEL_DEBUG, ("LIBPARODUS: Sent registration message\n"));
 	}
+	SETERR (0, 0);
 	return 0;
 }
 
+int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
+{
+  extra_err_info_t err;
+  return libparodus_init_dbg (instance, libpd_cfg, &err);
+}
+
 // When msg_len is given as -1, then msg is a null terminated string
-static int sock_send (int sock, const char *msg, int msg_len, int *exterr)
+static int sock_send (int sock, const char *msg, int msg_len, int *oserr)
 {
   int bytes;
-	*exterr = 0;
+	*oserr = 0;
 	if (msg_len < 0)
 		msg_len = strlen (msg) + 1; // include terminating null
 	bytes = nn_send (sock, msg, msg_len, 0);
   if (bytes < 0) {
-		*exterr = errno; 
+		*oserr = errno; 
 		libpd_log_err (LEVEL_ERROR, errno, ("Error sending msg\n"));
 		return -0x40;
 	}
@@ -701,26 +599,26 @@ static int sock_send (int sock, const char *msg, int msg_len, int *exterr)
 }
 
 // returns 0 OK, 1 timedout, -1 error
-static int sock_receive (int rcv_sock, raw_msg_t *msg, int *exterr)
+static int sock_receive (int rcv_sock, raw_msg_t *msg, int *oserr)
 {
 	char *buf = NULL;
   msg->len = nn_recv (rcv_sock, &buf, NN_MSG, 0);
 
-	*exterr = 0;
+	*oserr = 0;
   if (msg->len < 0) {
 		libpd_log_err (LEVEL_ERROR, errno, ("Error receiving msg\n"));
 		if (errno == ETIMEDOUT)
 			return 1;
-		*exterr = errno; 
+		*oserr = errno; 
 		return -1;
 	}
 	msg->msg = buf;
 	return 0;
 }
 
-static void libparodus_shutdown__ (__instance_t *inst)
+static void libparodus_shutdown__ (__instance_t *inst, extra_err_info_t *err_info)
 {
-	int rtn, exterr;
+	int rtn;
 #ifdef TEST_SOCKET_TIMING
 	sst_display_totals ();
 #endif
@@ -728,14 +626,14 @@ static void libparodus_shutdown__ (__instance_t *inst)
 	inst->run_state = RUN_STATE_DONE;
 	libpd_log (LEVEL_INFO, ("LIBPARODUS: Shutting Down\n"));
 	if (inst->cfg.receive) {
-		sock_send (inst->stop_rcv_sock, end_msg, -1, &exterr);
+		sock_send (inst->stop_rcv_sock, end_msg, -1, &err_info->oserr);
 	 	rtn = pthread_join (inst->wrp_receiver_tid, NULL);
 		if (rtn != 0) {
 			libpd_log_err (LEVEL_ERROR, rtn, ("Error terminating wrp receiver thread\n"));
 		}
 		shutdown_socket(&inst->rcv_sock);
 		libpd_log (LEVEL_INFO, ("LIBPARODUS: Flushing wrp queue\n"));
-		flush_wrp_queue (inst->wrp_queue, 5);
+		flush_wrp_queue (inst->wrp_queue, 5, &err_info->oserr);
 		libpd_qdestroy (&inst->wrp_queue, &wrp_free);
 	}
 	libpd_log (LEVEL_DEBUG, ("LIBPARODUS: Shut down send sock %d\n", inst->send_sock));
@@ -747,10 +645,13 @@ static void libparodus_shutdown__ (__instance_t *inst)
 	inst->auth_received = false;
 }
 
-int libparodus_shutdown (libpd_instance_t *instance)
+int libparodus_shutdown_dbg (libpd_instance_t *instance,
+    extra_err_info_t *err_info)
 {
 	__instance_t *inst;
 
+	err_info->err_detail = 0;
+	err_info->oserr = 0;
 	if (NULL == instance)
 		return 0;
 	inst = (__instance_t *) *instance;
@@ -759,24 +660,32 @@ int libparodus_shutdown (libpd_instance_t *instance)
 
 	if (RUN_STATE_RUNNING != inst->run_state) {
 		libpd_log (LEVEL_DEBUG, ("LIBPARODUS: not running at shutdown\n"));
+		err_info->err_detail = LIBPD_ERR_SHUTDOWN_STATE;
 		destroy_instance (instance);
 		return 0;
 	}
 
-	libparodus_shutdown__ (inst);
+	libparodus_shutdown__ (inst, err_info);
 	destroy_instance (instance);
 	return 0;
 }
 
+int libparodus_shutdown (libpd_instance_t *instance)
+{
+  extra_err_info_t err;
+  return libparodus_shutdown_dbg (instance, &err);
+}
+
+
 // returns 0 OK
 //  1 timed out
 static int timed_wrp_queue_receive (libpd_mq_t wrp_queue,	wrp_msg_t **msg, 
-	unsigned timeout_ms, int *exterr)
+	unsigned timeout_ms, int *oserr)
 {
 	int rtn;
 	void *raw_msg;
 
-	rtn = libpd_qreceive (wrp_queue, &raw_msg, timeout_ms, exterr);
+	rtn = libpd_qreceive (wrp_queue, &raw_msg, timeout_ms, oserr);
 	if (rtn == 1) // timed out
 		return 1;
 	if (rtn != 0) {
@@ -807,12 +716,12 @@ static wrp_msg_t *make_closed_msg (void)
 //  1 timed out
 //  LIBPD_ERR_RCV_ ... on error
 int libparodus_receive__ (libpd_mq_t wrp_queue, wrp_msg_t **msg, 
-	uint32_t ms, int *exterr)
+	uint32_t ms, int *oserr)
 {
 	int err;
 	wrp_msg_t *msg__;
 
-	err = timed_wrp_queue_receive (wrp_queue, msg, ms, exterr);
+	err = timed_wrp_queue_receive (wrp_queue, msg, ms, oserr);
 	if (err == 1) // timed out
 		return 1;
 	if (err != 0)
@@ -835,45 +744,49 @@ int libparodus_receive__ (libpd_mq_t wrp_queue, wrp_msg_t **msg,
 //  2 closed msg received
 //  1 timed out
 // LIBPD_ERR_RCV_ ... on error
-int libparodus_receive (libpd_instance_t instance, wrp_msg_t **msg, uint32_t ms)
+int libparodus_receive_dbg (libpd_instance_t instance, wrp_msg_t **msg, 
+    uint32_t ms, extra_err_info_t *err_info)
 {
 	int rtn;
 	__instance_t *inst = (__instance_t *) instance;
-	error_item_t *err_item;
 
+	err_info->err_detail = 0;
+	err_info->oserr = 0;
 	if (NULL == inst) {
 		libpd_log (LEVEL_ERROR, ("Null instance on libparodus_receive\n"));
+		err_info->err_detail = LIBPD_ERR_RCV_NULL_INST;
 		return LIBPD_ERROR_RCV_NULL_INST;
 	}
 
-	err_item = find_my_error_info (inst, true);
-	if (NULL == err_item) {
-		libpd_log (LEVEL_ERROR, ("Too many threads on libparodus_receive\n"));
-		return LIBPD_ERROR_RCV_THR_LIMIT;
-	}
 	if (!inst->cfg.receive) {
 		libpd_log (LEVEL_ERROR, ("No receive option on libparodus_receive\n"));
-		err_item->err = LIBPD_ERR_RCV_CFG;
+		err_info->err_detail = LIBPD_ERR_RCV_CFG;
 		return LIBPD_ERROR_RCV_CFG;
 	}
 	if (RUN_STATE_RUNNING != inst->run_state) {
 		libpd_log (LEVEL_ERROR, ("LIBPARODUS: not running at receive\n"));
-		err_item->err = LIBPD_ERR_RCV_STATE;
+		err_info->err_detail = LIBPD_ERR_RCV_STATE;
 		return LIBPD_ERROR_RCV_STATE;
 	}
-	rtn = libparodus_receive__ (inst->wrp_queue, msg, ms, &err_item->exterr);
+	rtn = libparodus_receive__ (inst->wrp_queue, msg, ms, &err_info->oserr);
 	if (rtn >= 0)
 		return rtn;
-	err_item->err = rtn;
+	err_info->err_detail = rtn;
 	// errno = inst->exterr;
 	return LIBPD_ERROR_RCV_RCV;
 }
 
-int libparodus_close_receiver__ (libpd_mq_t wrp_queue, int *exterr)
+int libparodus_receive (libpd_instance_t instance, wrp_msg_t **msg, uint32_t ms)
+{
+  extra_err_info_t err;
+  return libparodus_receive_dbg (instance, msg, ms, &err);
+}
+
+int libparodus_close_receiver__ (libpd_mq_t wrp_queue, int *oserr)
 {
 	wrp_msg_t *closed_msg_ptr =	make_closed_msg ();
 	int rtn = libpd_qsend (wrp_queue, (void *) closed_msg_ptr, 
-				WRP_QUEUE_SEND_TIMEOUT_MS, exterr);
+				WRP_QUEUE_SEND_TIMEOUT_MS, oserr);
 	if (rtn == 1) // timed out
 		return 1;
 	if (rtn != 0) {
@@ -883,44 +796,47 @@ int libparodus_close_receiver__ (libpd_mq_t wrp_queue, int *exterr)
 	return 0;
 }
 
-int libparodus_close_receiver (libpd_instance_t instance)
+int libparodus_close_receiver_dbg (libpd_instance_t instance,
+    extra_err_info_t *err_info)
 {
 	int rtn;
 	__instance_t *inst = (__instance_t *) instance;
-	error_item_t extra_err_item = {0, 0};
-	error_item_t *err_item;
 
+	err_info->err_detail = 0;
+	err_info->oserr = 0;
 	if (NULL == inst) {
 		libpd_log (LEVEL_ERROR, ("Null instance on libparodus_close_receiver\n"));
+		err_info->err_detail = LIBPD_ERR_CLOSE_RCV_NULL_INST;
 		return LIBPD_ERROR_CLOSE_RCV_NULL_INST;
-	}
-	err_item = find_my_error_info (inst, true);
-	if (NULL == err_item) {
-		libpd_log (LEVEL_ERROR, ("Too many threads on libparodus_close_receive\n"));
-		err_item = &extra_err_item;
 	}
 	if (!inst->cfg.receive) {
 		libpd_log (LEVEL_ERROR, ("No receive option on libparodus_close_receiver\n"));
-		err_item->err = LIBPD_ERR_CLOSE_RCV_CFG;
+		err_info->err_detail = LIBPD_ERR_CLOSE_RCV_CFG;
 		return LIBPD_ERROR_CLOSE_RCV_CFG;
 	}
 	if (RUN_STATE_RUNNING != inst->run_state) {
 		libpd_log (LEVEL_ERROR, ("LIBPARODUS: not running at close receiver\n"));
-		err_item->err = LIBPD_ERR_CLOSE_RCV_STATE;
+		err_info->err_detail = LIBPD_ERR_CLOSE_RCV_STATE;
 		return LIBPD_ERROR_CLOSE_RCV_STATE;
 	}
-	rtn = libparodus_close_receiver__ (inst->wrp_queue, &err_item->exterr);
+	rtn = libparodus_close_receiver__ (inst->wrp_queue, &err_info->oserr);
 	if (rtn == 0)
 		return 0;
 	if (rtn == 1) {
-		err_item->err = LIBPD_ERR_CLOSE_RCV_TIMEDOUT;
+		err_info->err_detail = LIBPD_ERR_CLOSE_RCV_TIMEDOUT;
 		return LIBPD_ERROR_CLOSE_RCV_TIMEDOUT;
 	}
-	err_item->err = rtn;
+	err_info->err_detail = rtn;
 	return LIBPD_ERROR_CLOSE_RCV_SEND;
 }
 
-static int wrp_sock_send (__instance_t *inst, wrp_msg_t *msg, error_item_t *err)
+int libparodus_close_receiver (libpd_instance_t instance)
+{
+  extra_err_info_t err;
+  return libparodus_close_receiver_dbg (instance, &err);
+}
+
+static int wrp_sock_send (__instance_t *inst, wrp_msg_t *msg, extra_err_info_t *err_info)
 {
 	int rtn;
 	ssize_t msg_len;
@@ -932,8 +848,8 @@ static int wrp_sock_send (__instance_t *inst, wrp_msg_t *msg, error_item_t *err)
 #define SST(func)
 #endif
 
-	err->err = 0;
-	err->exterr = 0;
+	err_info->err_detail = 0;
+	err_info->oserr = 0;
 	pthread_mutex_lock (&inst->send_mutex);
 	msg_len = wrp_struct_to (msg, WRP_BYTES, &msg_bytes);
 	if (msg_len < 1) {
@@ -945,7 +861,7 @@ static int wrp_sock_send (__instance_t *inst, wrp_msg_t *msg, error_item_t *err)
 	SST (sst_start_total_timing (&sst_times);)
 
 	if (inst->connect_on_every_send) {
-		rtn = connect_sender (inst->parodus_url, &err->exterr);
+		rtn = connect_sender (inst->parodus_url, &err_info->oserr);
 		if (rtn < 0) {
 			free (msg_bytes);
 			pthread_mutex_unlock (&inst->send_mutex);
@@ -955,7 +871,8 @@ static int wrp_sock_send (__instance_t *inst, wrp_msg_t *msg, error_item_t *err)
 	}
 
 	SST (sst_start_send_timing (&sst_times);)
-	rtn = sock_send (inst->send_sock, (const char *)msg_bytes, msg_len, &err->exterr);
+	rtn = sock_send (inst->send_sock, (const char *)msg_bytes, msg_len, 
+	    &err_info->oserr);
 	SST (sst_update_send_time (&sst_times);)
 
 	if (inst->connect_on_every_send) {
@@ -970,44 +887,48 @@ static int wrp_sock_send (__instance_t *inst, wrp_msg_t *msg, error_item_t *err)
 	return -0x1800 + rtn;
 }
 
-int libparodus_send__ (libpd_instance_t instance, wrp_msg_t *msg, error_item_t *err)
+int libparodus_send__ (libpd_instance_t instance, wrp_msg_t *msg, 
+    extra_err_info_t *err_info)
 {
-	int rtn = wrp_sock_send ((__instance_t *) instance, msg, err);
+	int rtn = wrp_sock_send ((__instance_t *) instance, msg, err_info);
 	if (rtn == 0)
 		return 0;
 	return LIBPD_ERR_SEND + rtn;
 }
 
-int libparodus_send (libpd_instance_t instance, wrp_msg_t *msg)
+int libparodus_send_dbg (libpd_instance_t instance, wrp_msg_t *msg,
+    extra_err_info_t *err_info)
 {
 	int rtn;
 	__instance_t *inst = (__instance_t *) instance;
-	error_item_t *err_item;
 
+	err_info->err_detail = 0;
+	err_info->oserr = 0;
 	if (NULL == inst) {
 		libpd_log (LEVEL_ERROR, ("Null instance on libparodus_send\n"));
+		err_info->err_detail = LIBPD_ERR_SEND_NULL_INST;
 		return LIBPD_ERROR_SEND_NULL_INST;
-	}
-	err_item = find_my_error_info (inst, true);
-	if (NULL == err_item) {
-		libpd_log (LEVEL_ERROR, ("Too many threads on libparodus_send\n"));
-		return LIBPD_ERROR_SEND_THR_LIMIT;
 	}
 	if (RUN_STATE_RUNNING != inst->run_state) {
 		libpd_log (LEVEL_ERROR, ("LIBPARODUS: not running at send\n"));
-		err_item->err = LIBPD_ERR_SEND_STATE;
+		err_info->err_detail = LIBPD_ERR_SEND_STATE;
 		return LIBPD_ERR_SEND_STATE;
 	}
-	rtn = libparodus_send__ (instance, msg, err_item);
+	rtn = libparodus_send__ (instance, msg, err_info);
 	if (rtn == 0)
 		return 0;
-	err_item->err = rtn;
+	err_info->err_detail = rtn;
 	if (rtn == LIBPD_ERR_SEND_CONVERT)
 		return LIBPD_ERROR_SEND_WRP_MSG;
 	// errno = inst->exterr;
   return LIBPD_ERROR_SEND_SOCKET;
 }
 
+int libparodus_send (libpd_instance_t instance, wrp_msg_t *msg)
+{
+  extra_err_info_t err;
+  return libparodus_send_dbg (instance, msg, &err);
+}
 
 static char *find_wrp_msg_dest (wrp_msg_t *wrp_msg)
 {
@@ -1026,7 +947,7 @@ static char *find_wrp_msg_dest (wrp_msg_t *wrp_msg)
 	return NULL;
 }
 
-static void wrp_receiver_reconnect (__instance_t *inst, error_item_t *err)
+static void wrp_receiver_reconnect (__instance_t *inst, extra_err_info_t *err_info)
 {
 	int p = 2;
 	int retry_delay = 0;
@@ -1042,10 +963,10 @@ static void wrp_receiver_reconnect (__instance_t *inst, error_item_t *err)
 		libpd_log (LEVEL_DEBUG, ("Retrying receiver connection\n"));
 		inst->rcv_sock = connect_receiver 
 			(inst->client_url, inst->cfg.keepalive_timeout_secs, 
-			 &err->exterr);
+			 &err_info->oserr);
 		if (inst->rcv_sock < 0)
 			continue;
-		if (send_registration_msg (inst, err) != 0)
+		if (send_registration_msg (inst, err_info) != 0)
 			continue;
 		break;
 	}
@@ -1061,12 +982,12 @@ static void *wrp_receiver_thread (void *arg)
 	wrp_msg_t *wrp_msg;
 	int end_msg_len = strlen(end_msg);
 	__instance_t *inst = (__instance_t*) arg;
-	error_item_t *rcv_err = inst->rcv_thread_err;
+	extra_err_info_t *rcv_err = &inst->rcv_err_info;
 	char *msg_dest, *msg_service;
 
 	libpd_log (LEVEL_INFO, ("LIBPARODUS: Starting wrp receiver thread\n"));
 	while (1) {
-		rtn = sock_receive (inst->rcv_sock, &raw_msg, &rcv_err->exterr);
+		rtn = sock_receive (inst->rcv_sock, &raw_msg, &rcv_err->oserr);
 		if (rtn != 0) {
 			if (rtn == 1) { // timed out
 				if (RUN_STATE_RUNNING != inst->run_state) {
@@ -1134,21 +1055,21 @@ static void *wrp_receiver_thread (void *arg)
 		libpd_log (LEVEL_DEBUG, ("LIBPARODUS: received msg directed to service %s\n",
 			inst->cfg.service_name));
 		libpd_qsend (inst->wrp_queue, (void *) wrp_msg, WRP_QUEUE_SEND_TIMEOUT_MS, 
-			&rcv_err->exterr);
+			&rcv_err->oserr);
 	}
 	libpd_log (LEVEL_INFO, ("Ended wrp receiver thread\n"));
 	return NULL;
 }
 
 
-int flush_wrp_queue (libpd_mq_t wrp_queue, uint32_t delay_ms)
+int flush_wrp_queue (libpd_mq_t wrp_queue, uint32_t delay_ms, int *oserr)
 {
 	wrp_msg_t *wrp_msg = NULL;
 	int count = 0;
-	int err, exterr;
+	int err;
 
 	while (1) {
-		err = timed_wrp_queue_receive (wrp_queue, &wrp_msg, delay_ms, &exterr);
+		err = timed_wrp_queue_receive (wrp_queue, &wrp_msg, delay_ms, oserr);
 		if (err == 1)	// timed out
 			break;
 		if (err != 0)
@@ -1164,9 +1085,9 @@ int flush_wrp_queue (libpd_mq_t wrp_queue, uint32_t delay_ms)
 // Functions used by libpd_test.c
 
 int test_create_wrp_queue (libpd_mq_t *wrp_queue, 
-	const char *wrp_queue_name, int *exterr)
+	const char *wrp_queue_name, int *oserr)
 {
-	return libpd_qcreate (wrp_queue, wrp_queue_name, 24, exterr);
+	return libpd_qcreate (wrp_queue, wrp_queue_name, 24, oserr);
 }
 
 void test_close_wrp_queue (libpd_mq_t *wrp_queue)
@@ -1174,7 +1095,7 @@ void test_close_wrp_queue (libpd_mq_t *wrp_queue)
 	libpd_qdestroy (wrp_queue, &wrp_free);
 }
 
-int test_send_wrp_queue_ok (libpd_mq_t wrp_queue, int *exterr)
+int test_send_wrp_queue_ok (libpd_mq_t wrp_queue, int *oserr)
 {
 	wrp_msg_t *reg_msg = (wrp_msg_t *) malloc (sizeof(wrp_msg_t));
 	char *name;
@@ -1184,12 +1105,12 @@ int test_send_wrp_queue_ok (libpd_mq_t wrp_queue, int *exterr)
 	name = strdup(PARODUS_CLIENT_URL);
 	reg_msg->u.reg.url = name;
 	return libpd_qsend (wrp_queue, (void *) reg_msg, 
-		WRP_QUEUE_SEND_TIMEOUT_MS, exterr);
+		WRP_QUEUE_SEND_TIMEOUT_MS, oserr);
 }
 
-int test_close_receiver (libpd_mq_t wrp_queue, int *exterr)
+int test_close_receiver (libpd_mq_t wrp_queue, int *oserr)
 {
-	return libparodus_close_receiver__ (wrp_queue, exterr);
+	return libparodus_close_receiver__ (wrp_queue, oserr);
 }
 
 void test_get_counts (libpd_instance_t instance, 
