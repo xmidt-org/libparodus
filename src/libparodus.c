@@ -439,14 +439,6 @@ static int send_registration_msg (__instance_t *inst)
 	return wrp_sock_send (inst, &reg_msg);
 }
 
-static bool show_options (libpd_cfg_t *cfg)
-{
-	libpd_log (LEVEL_DEBUG, 
-		("LIBPARODUS Options: Rcv: %d, KA Timeout: %d\n",
-		cfg->receive, cfg->keepalive_timeout_secs));
-	return cfg->receive;
-}
-
 // define ABORT FLAGS
 #define ABORT_RCV_SOCK	1
 #define ABORT_QUEUE			2
@@ -488,7 +480,10 @@ int libparodus_init (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg)
 	if (inst->cfg.test_flags & CFG_TEST_CONNECT_ON_EVERY_SEND)
 		inst->connect_on_every_send = true;
 
-	show_options (libpd_cfg);
+	libpd_log (LEVEL_DEBUG, 
+		("LIBPARODUS Options: Rcv: %d, KA Timeout: %d\n",
+		libpd_cfg->receive, libpd_cfg->keepalive_timeout_secs));
+
 	if (inst->cfg.receive) {
 		libpd_log (LEVEL_INFO, ("LIBPARODUS: connecting receiver to %s\n",  inst->client_url));
 		err = connect_receiver (inst->client_url, inst->cfg.keepalive_timeout_secs, &oserr);
