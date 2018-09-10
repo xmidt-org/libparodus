@@ -404,11 +404,21 @@ typedef struct {
 
 
 /**
+  The following APIs are the same as the corresponding calls in
+  libparodus.h, except that they have an extra parameter 'err_info'
+  where extra error information may be returned.
+  These calls can be used for debugging. They should not be used in 
+  production code.
+*/
+
+
+/**
  * Initialize the parodus wrp interface
  *
  * @param instance pointer to receive instance object that must be provided
  *   to all subsequent API calls.
  * @param cfg configuration information: service_name must be provided,
+ * @param err_info extra error information for debugging.
  * @return 0 on success, else:
  *		LIBPD_ERROR_INIT_INST = -101, could not create new instance
  *		LIBPD_ERROR_INIT_CFG = -102, invalid config parameter
@@ -437,6 +447,7 @@ int libparodus_init_dbg (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg,
  *  @param instance instance object
  *  @param msg the pointer to receive the next msg struct
  *  @param ms the number of milliseconds to wait for the next message
+ *  @param err_info extra error information for debugging.
  *
  *  @return 0 on success, 2 if closed msg received, 1 if timed out, else:
  *		LIBPD_ERROR_RCV_NULL_INST = -201, null instance given
@@ -458,6 +469,7 @@ int libparodus_receive_dbg (libpd_instance_t instance, wrp_msg_t **msg,
  * Sends a close message to the receiver
  *
  *  @param instance instance object
+ *  @param err_info extra error information for debugging.
  *  @return 0 on success,  else:
  *		LIBPD_ERROR_CLOSE_RCV_NULL_INST = -301, null instance given
  *		LIBPD_ERROR_CLOSE_RCV_STATE = -302, run state error, not running
@@ -478,6 +490,7 @@ int libparodus_close_receiver_dbg (libpd_instance_t instance,
  * Shut down the parodus wrp interface
  *
  * @param instance instance object
+ * @param err_info extra error information for debugging.
  * @return always 0
  * 
  * @note this is the same as libparodus_shutdown (defined in libparpdus.h)
@@ -495,6 +508,7 @@ int libparodus_shutdown_dbg (libpd_instance_t *instance,
  *
  * @param instance instance object
  * @param msg wrp message to send
+ * @param err_info extra error information for debugging.
  *
  * @return 0 on success, else:
  *		LIBPD_ERROR_SEND_NULL_INST = -501, null instance given
