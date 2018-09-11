@@ -269,6 +269,11 @@ typedef enum {
 	 */
 	LIBPD_ERR_RCV_QUEUE_CONDWAIT = -0xB3040,
 	/** 
+	 * @brief Error on libparodus receive
+	 * error on queue gettimeofday
+	 */
+	LIBPD_ERR_RCV_QUEUE_EXPTIME = -0xB3041,
+	/** 
 	 * @brief Error on libparodus_close_receiver
 	 */
 	LIBPD_ERR_CLOSE_RCV = -0xE0000,
@@ -308,9 +313,19 @@ typedef enum {
 	 */
 	LIBPD_ERR_CLOSE_RCV_QSEND_CONDWAIT = -0xE2040,
 	/** 
+	 * @brief Error on libparodus_close_receiver
+	 * error on gettimeofday in queue send
+	 */
+	LIBPD_ERR_CLOSE_RCV_QSEND_EXPTIME = -0xE2041,
+	/** 
 	 * @brief Error on libparodus_shutdown
 	 */
 	LIBPD_ERR_SHUTDOWN = -0x100000,
+	/** 
+	 * @brief Error on libparodus_shutdown
+	 * run state error
+	 */
+	LIBPD_ERR_SHUTDOWN_STATE = -0x100002,
 	/** 
 	 * @brief Error on libparodus_shutdown
 	 * run state error
@@ -380,13 +395,135 @@ typedef enum {
 } __libpd_err_t;
 
 
+
+typedef struct {
+	int err_detail;	// err detail of last api call
+			// the codes are defined here in libparodus_private.h
+	int oserr;	// os err of last api call
+} extra_err_info_t;
+
+
 /**
- * Retrieve the err of last libparodus call
+  The following APIs are the same as the corresponding calls in
+  libparodus.h, except that they have an extra parameter 'err_info'
+  where extra error information may be returned.
+  These calls can be used for debugging. They should not be used in 
+  production code.
+*/
+
+
+/**
+ * Initialize the parodus wrp interface
  *
- * @param exterr exterr of last libparodus call
- * @return err of last libparodus call
+ * @param instance pointer to receive instance object that must be provided
+ *   to all subsequent API calls.
+ * @param cfg configuration information: service_name must be provided,
+ * @param err_info extra error information for debugging.
+ * @return 0 on success, else:
+ *		LIBPD_ERROR_INIT_INST = -101, could not create new instance
+ *		LIBPD_ERROR_INIT_CFG = -102, invalid config parameter
+ *		LIBPD_ERROR_INIT_CONNECT = -103, error connecting
+ *		LIBPD_ERROR_INIT_RCV_THREAD = -104, error creating wrp receiver thread
+ *		LIBPD_ERROR_INIT_QUEUE = -105, error creating wrp msg receive queue
+ *		LIBPD_ERROR_INIT_REGISTER = -106, error sending registration msg
+ *
+ * @note this is the same as libparodus_init (defined in libparpdus.h)
+ * except extra error information is returned. This function should not
+ * be used in production code.
+ * 
+ * @note libparodus_shutdown must be called even if there is an error
+ * on libparodus_init   
  */
-int __libparodus_err (libpd_instance_t instance, int *exterr);
+int libparodus_init_dbg (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg,
+    extra_err_info_t *err_info);
+
+/**
+ *  Receives the next message in the queue that was sent to this service, waiting
+ *  the prescribed number of milliseconds before returning.
+ *
+ *  @note msg will be set to NULL if no message is present during the time
+ *  allotted.
+ *
+ *  @param instance instance object
+ *  @param msg the pointer to receive the next msg struct
+ *  @param ms the number of milliseconds to wait for the next message
+ *  @param err_info extra error information for debugging.
+ *
+ *  @return 0 on success, 2 if closed msg received, 1 if timed out, else:
+ *		LIBPD_ERROR_RCV_NULL_INST = -201, null instance given
+ *		LIBPD_ERROR_RCV_STATE = -202, run state error, not running
+ *		LIBPD_ERROR_RCV_CFG = -203, not configured for receive
+ *		LIBPD_ERROR_RCV_RCV = -204, receive error
+ *
+ * @note this is the same as libparodus_receive (defined in libparpdus.h)
+ * except extra error information is returned. This function should not
+ * be used in production code.
+ * 
+ *  @note don't free the msg when return is 2. 
+ */
+ 
+int libparodus_receive_dbg (libpd_instance_t instance, wrp_msg_t **msg, 
+    uint32_t ms, extra_err_info_t *err_info);
+
+/**
+ * Sends a close message to the receiver
+ *
+ *  @param instance instance object
+ *  @param err_info extra error information for debugging.
+ *  @return 0 on success,  else:
+ *		LIBPD_ERROR_CLOSE_RCV_NULL_INST = -301, null instance given
+ *		LIBPD_ERROR_CLOSE_RCV_STATE = -302, run state error, not running
+ *		LIBPD_ERROR_CLOSE_RCV_CFG = -303, not configured for receive
+ *		LIBPD_ERROR_CLOSE_RCV_TIMEDOUT = -304, timed out on queue send
+ *		LIBPD_ERROR_CLOSE_RCV_SEND = -305, unable to send close receiver msg
+ * 
+ * @note this is the same as libparodus_close_receiver (defined in libparpdus.h)
+ * except extra error information is returned. This function should not
+ * be used in production code.
+ * 
+
+ */
+int libparodus_close_receiver_dbg (libpd_instance_t instance,
+    extra_err_info_t *err_info);
+
+/**
+ * Shut down the parodus wrp interface
+ *
+ * @param instance instance object
+ * @param err_info extra error information for debugging.
+ * @return always 0
+ * 
+ * @note this is the same as libparodus_shutdown (defined in libparpdus.h)
+ * except extra error information is returned. This function should not
+ * be used in production code.
+ * 
+
+*/
+int libparodus_shutdown_dbg (libpd_instance_t *instance,
+    extra_err_info_t *err_info);
+
+
+/**
+ * Send a wrp message to the parodus service
+ *
+ * @param instance instance object
+ * @param msg wrp message to send
+ * @param err_info extra error information for debugging.
+ *
+ * @return 0 on success, else:
+ *		LIBPD_ERROR_SEND_NULL_INST = -501, null instance given
+ *		LIBPD_ERROR_SEND_STATE = -502, run state error, not running
+ *		LIBPD_ERROR_SEND_WRP_MSG = -503, invalid wrp message
+ *		LIBPD_ERROR_SEND_SOCKET = -504, socket send error
+ * 
+ * @note this is the same as libparodus_send (defined in libparpdus.h)
+ * except extra error information is returned. This function should not
+ * be used in production code.
+ * 
+
+ */
+int libparodus_send_dbg (libpd_instance_t instance, wrp_msg_t *msg,
+    extra_err_info_t *err_info);
 
 
 /**

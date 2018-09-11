@@ -182,7 +182,14 @@ int libpd_qsend (libpd_mq_t mq, void *msg, unsigned timeout_ms, int *exterr)
 	while (true) {
 		if (enqueue_msg (q, msg))
 			break;
-		get_expire_time (timeout_ms, &ts);
+		rtn = get_expire_time (timeout_ms, &ts);
+		if (rtn != 0) {
+			*exterr = rtn;
+			libpd_log_err (LEVEL_ERROR, rtn, 
+				("gettimeofday error waiting to send queue\n"));
+			pthread_mutex_unlock (&q->mutex);
+			return LIBPD_QERR_SEND_EXPTIME;
+		}
 		rtn = pthread_cond_timedwait (&q->not_full_cond, &q->mutex, &ts);
 		if (rtn != 0) {
 			if (rtn == ETIMEDOUT) {
@@ -217,7 +224,14 @@ int libpd_qreceive (libpd_mq_t mq, void **msg, unsigned timeout_ms, int *exterr)
 		msg__ = dequeue_msg (q);
 		if (NULL != msg__)
 			break;
-		get_expire_time (timeout_ms, &ts);
+		rtn = get_expire_time (timeout_ms, &ts);
+		if (rtn != 0) {
+			*exterr = rtn;
+			libpd_log_err (LEVEL_ERROR, rtn, 
+				("gettimeofday error waiting to receive on queue\n"));
+			pthread_mutex_unlock (&q->mutex);
+			return LIBPD_QERR_RCV_EXPTIME;
+		}
 		rtn = pthread_cond_timedwait (&q->not_empty_cond, &q->mutex, &ts);
 		if (rtn != 0) {
 			if (rtn == ETIMEDOUT) {
