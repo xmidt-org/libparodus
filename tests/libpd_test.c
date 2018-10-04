@@ -33,6 +33,7 @@
 #include "../src/libparodus_queues.h"
 #include <pthread.h>
 
+
 #define MOCK_MSG_COUNT 10
 #define MOCK_MSG_COUNT_STR "10"
 #define NUM_KEEP_ALIVE_MSGS 5
@@ -798,7 +799,6 @@ void test_1(void)
 	int rtn, oserr;
 	int test_sock, dup_sock;
 	libpd_mq_t test_queue;
-	extra_err_info_t err_info;
 	wrp_msg_t *wrp_msg;
 	unsigned event_num = 0;
 	unsigned msg_num = 0;
@@ -839,10 +839,6 @@ void test_1(void)
 	CU_ASSERT (test_sock >= 0) ;
 	if (test_sock >= 0)
 		shutdown_socket(&test_sock);
-	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test connect sender, bad IP\n"));
-	test_sock = connect_sender (BAD_SEND_URL, &oserr);
-	CU_ASSERT (test_sock < 0);
-	CU_ASSERT (oserr == EINVAL);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test create wrp queue\n"));
 	CU_ASSERT (test_create_wrp_queue (&test_queue, "/TEST_QUEUE", &oserr) == 0);
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: test libparodus receive good\n"));
@@ -889,15 +885,7 @@ void test_1(void)
   CU_ASSERT (strcmp (libparodus_strerror (rtn), 
 			"Error on libparodus send. Null instance given.") == 0);
 	
-	libpd_log (LEVEL_INFO, ("LIBPD_TEST: libparodus_init bad parodus ip\n"));
 	cfg1.receive = true;
-	cfg1.parodus_url = BAD_PARODUS_URL;
-	CU_ASSERT (libparodus_init_dbg (&test_instance1, &cfg1, &err_info) == LIBPD_ERROR_INIT_CFG);
-        libpd_log (LEVEL_INFO, ("LIBPD_TEST: rtn %x, oserr %d\n", 
-            err_info.errdetail, err_info.oserr));
-	CU_ASSERT (err_info.err_detail == LIBPD_ERR_INIT_SEND_CONN);
-	CU_ASSERT (err_info.oserr == EINVAL);
-	CU_ASSERT (libparodus_shutdown (&test_instance1) == 0);
 	cfg1.parodus_url = GOOD_PARODUS_URL;
 	cfg1.client_url = BAD_CLIENT_URL;
 	libpd_log (LEVEL_INFO, ("LIBPD_TEST: libparodus_init bad client url\n"));
