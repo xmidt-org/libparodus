@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix the strerror_r() usage for all cases.
 - Replace malloc/strcpy with strdup
 - Re-enabled the temporarily commented out setting that prevented cyclic building
-- Switched from nanomsg (Release 1.1.2) to NNG (v1.0.1-87-gfefd6368)
+- Switched from nanomsg (Release 1.1.2) to NNG (Release v1.0.1)
 
 ## [1.0.0] - 2018-06-19
 ### Added

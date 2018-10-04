@@ -82,7 +82,7 @@ add_dependencies(libtrower-base64 trower-base64)
 ExternalProject_Add(nng
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/_prefix/nng
     GIT_REPOSITORY https://github.com/nanomsg/nng.git
-    GIT_TAG "v1.0.1-87-gfefd6368"
+    GIT_TAG "v1.0.1"
     CMAKE_ARGS += -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}
 )
 add_library(libnng STATIC SHARED IMPORTED)
