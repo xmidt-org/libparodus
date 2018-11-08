@@ -23,8 +23,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/time.h>
-#include <nng/compat/nanomsg/nn.h>
-#include <nng/compat/nanomsg/pipeline.h>
+#include <nanomsg/nn.h>
+#include <nanomsg/pipeline.h>
 #include "libparodus.h"
 #include "libparodus_private.h"
 #include "libparodus_time.h"
