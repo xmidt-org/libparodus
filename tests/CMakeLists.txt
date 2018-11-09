@@ -25,7 +25,7 @@ set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fprofile-arcs -ftest-cov
 add_test(NAME NMsgTest COMMAND nmsg)
 add_executable (nmsg nmsg.c dbg_err.c)
 
-target_link_libraries (nmsg cunit -lnng -lm -lpthread)
+target_link_libraries (nmsg cunit -lnanomsg -lm -lpthread)
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 target_link_libraries (nmsg gcov)
 endif()
@@ -46,7 +46,7 @@ target_link_libraries (libpd
                        -lwrp-c
                        -lmsgpackc
                        -ltrower-base64
-                       -lnng
+                       -lnanomsg
                        -lcimplog
                        -lm
                        -lpthread)
@@ -64,7 +64,7 @@ target_link_libraries (mock_parodus
  -lwrp-c
  -lmsgpackc
  -ltrower-base64
- -lnng
+ -lnanomsg
  -lcimplog
  -lm
  -lpthread

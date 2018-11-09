@@ -32,8 +32,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <wrp-c/wrp-c.h>
-#include <nng/compat/nanomsg/nn.h>
-#include <nng/compat/nanomsg/pipeline.h>
+#include <nanomsg/nn.h>
+#include <nanomsg/pipeline.h>
 
 #include "dbg_err.h"
 
