@@ -27,7 +27,8 @@ set_target_properties(${PROJ_PARODUS_LIB}.shared PROPERTIES OUTPUT_NAME ${PROJ_P
 # Yocto build (ie dynamic lib). Other cases may need fixing too.
 # ----------------------------------------------------------------------------
 if (BUILD_YOCTO)
-target_link_libraries(${PROJ_PARODUS_LIB}.shared m cjson wrp-c trower-base64 nanomsg msgpackc)
+target_link_libraries(${PROJ_PARODUS_LIB}.shared m 
+  cjson wrp-c trower-base64 nanomsg msgpackc)
 endif (BUILD_YOCTO)
 
 install (TARGETS ${PROJ_PARODUS_LIB} DESTINATION lib${LIB_SUFFIX})
