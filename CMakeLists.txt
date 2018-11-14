@@ -25,6 +25,7 @@ set(PATCHES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/patches)
 set(INCLUDE_DIR ${INSTALL_DIR}/include)
 set(LIBRARY_DIR ${INSTALL_DIR}/lib)
 set(LIBRARY_DIR64 ${INSTALL_DIR}/lib64)
+set(PATCHES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/patches)
 set(COMMON_LIBRARY_DIR ${INSTALL_DIR}/lib/${CMAKE_LIBRARY_ARCHITECTURE})
 set(TEST_RESULTS_DIR ${CMAKE_CURRENT_BINARY_DIR}/test_results)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -82,7 +83,9 @@ add_dependencies(libtrower-base64 trower-base64)
 ExternalProject_Add(nanomsg
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/_prefix/nanomsg
     GIT_REPOSITORY https://github.com/nanomsg/nanomsg.git
+    #GIT_TAG "0c1aa2b288f6b167dbafe7e29c20e6fc7e71c000"
     GIT_TAG "1.1.2"
+    PATCH_COMMAND patch -p1 < ${PATCHES_DIR}/dbg_msgs.patch
     CMAKE_ARGS += -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}
 )
 add_library(libnanomsg STATIC SHARED IMPORTED)
