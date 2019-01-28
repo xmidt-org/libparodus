@@ -104,6 +104,7 @@ static bool do_multiple_rcv_test = false;
 static bool connect_on_every_send = false;
 static bool do_multiple_inits_test = false;
 static bool switch_service_names = false;
+static int keep_alive_test_timeout = 0;
 
 static libpd_instance_t test_instance1;
 static libpd_instance_t test_instance2;
@@ -939,6 +940,9 @@ void test_1(void)
 	if (using_mock) {
 		cfg1.keepalive_timeout_secs = 20;
 	}
+	else if (keep_alive_test_timeout > 0) {
+		cfg1.keepalive_timeout_secs = keep_alive_test_timeout;
+	}
 	if (switch_service_names) {
 		const char *tmp = cfg1.service_name;
 		cfg1.service_name = cfg2.service_name;
@@ -1104,7 +1108,7 @@ int main( int argc, char **argv __attribute__((unused)) )
 		if (argc <= 1)
 			using_mock = true;
 		else {
-			const char *arg = argv[1];
+			char *arg = argv[1];
 			if ((arg[0] == 's') || (arg[0] == 'S'))
 				no_mock_send_only_test = true;
 			if ((arg[0] == 'r') || (arg[0] == 'R'))
@@ -1129,6 +1133,10 @@ int main( int argc, char **argv __attribute__((unused)) )
 			}
 			if (arg[0] == '2') {
 				switch_service_names = true;
+			}
+			if (arg[0] == 'k') {
+				arg[0] = '#';
+				keep_alive_test_timeout = get_msg_num (arg);
 			}
 		
 		}
