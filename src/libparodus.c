@@ -1116,3 +1116,12 @@ void test_get_counts (libpd_instance_t instance,
 	*reconnect_count = inst->reconnect_count;
 }
 
+int test_send_registration_msg (libpd_instance_t instance, int *oserr)
+{
+  int rtn;
+  extra_err_info_t err_info;
+  __instance_t *inst = (__instance_t *) instance;
+  rtn = send_registration_msg (inst, &err_info);
+  *oserr = err_info.oserr;
+  return rtn;
+}
