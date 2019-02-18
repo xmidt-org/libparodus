@@ -104,6 +104,8 @@ static bool do_multiple_rcv_test = false;
 static bool connect_on_every_send = false;
 static bool do_multiple_inits_test = false;
 static bool switch_service_names = false;
+static int keep_alive_test_timeout = 0;
+static bool do_reregister_test = false;
 
 static libpd_instance_t test_instance1;
 static libpd_instance_t test_instance2;
@@ -132,6 +134,8 @@ extern int  test_close_receiver (libpd_instance_t instance, int *oserr);
 extern void test_send_wrp_queue_ok (libpd_mq_t wrp_queue, int *oserr);
 extern void test_get_counts (libpd_instance_t instance, 
 	int *keep_alive_count, int *reconnect_count);
+extern int test_send_registration_msg 
+	(libpd_instance_t instance, int *oserr);
 
 
 #if TEST_ENVIRONMENT==2
@@ -939,6 +943,9 @@ void test_1(void)
 	if (using_mock) {
 		cfg1.keepalive_timeout_secs = 20;
 	}
+	else if (keep_alive_test_timeout > 0) {
+		cfg1.keepalive_timeout_secs = keep_alive_test_timeout;
+	}
 	if (switch_service_names) {
 		const char *tmp = cfg1.service_name;
 		cfg1.service_name = cfg2.service_name;
@@ -1016,6 +1023,12 @@ void test_1(void)
 			msgs_received_count++;
 			if (send_event_msgs (&msg_num, &event_num, 5, false) != 0)
 				break;
+		}
+		if (do_reregister_test)  {
+		  if (msgs_received_count == 5) {
+		    rtn = test_send_registration_msg (test_instance1, &oserr);
+		    libpd_log (LEVEL_INFO, ("LIBPD_TEST: libparodus_reregister rtn = %d\n", rtn));
+		  }
 		}
 	}
 	CU_ASSERT (reply_error_count == 0);
@@ -1104,11 +1117,15 @@ int main( int argc, char **argv __attribute__((unused)) )
 		if (argc <= 1)
 			using_mock = true;
 		else {
-			const char *arg = argv[1];
+			char *arg = argv[1];
 			if ((arg[0] == 's') || (arg[0] == 'S'))
 				no_mock_send_only_test = true;
-			if ((arg[0] == 'r') || (arg[0] == 'R'))
+			if ((arg[0] == 'r') || (arg[0] == 'R')) {
+			  if ((arg[1] == 'r') || (arg[1] == 'R'))
+				do_reregister_test = true;
+			  else
 				do_multiple_rcv_test = true;
+			}
 			if ((arg[0] == 'm') || (arg[0] == 'M'))
 				do_multiple_inst_test = true;
 			if ((arg[0] == 'b') || (arg[0] == 'B')) {
@@ -1129,6 +1146,10 @@ int main( int argc, char **argv __attribute__((unused)) )
 			}
 			if (arg[0] == '2') {
 				switch_service_names = true;
+			}
+			if (arg[0] == 'k') {
+				arg[0] = '#';
+				keep_alive_test_timeout = get_msg_num (arg);
 			}
 		
 		}
