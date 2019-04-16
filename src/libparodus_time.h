@@ -85,7 +85,7 @@ int make_current_timestamp (char *timestamp);
  * @param ts  expiration time
  * @return 0 on success, valid errno otherwise.
  */
-int get_expire_time (uint32_t ms, struct timespec *ts);
+int get_expire_time (unsigned msecs, struct timespec *ts);
 
 /**
  * Delay

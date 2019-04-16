@@ -133,23 +133,21 @@ int make_current_timestamp (char *timestamp)
 	return 0;
 }
 
-int get_expire_time (uint32_t ms, struct timespec *ts)
+int get_expire_time (unsigned msecs, struct timespec *ts)
 {
-	struct timeval tv;
-	int err = gettimeofday (&tv, NULL);
-	if (err != 0) {
-		libpd_log_err (LEVEL_ERROR, errno, ("Error getting time of day\n"));
-		return err;
-	}
-	tv.tv_sec += ms/1000;
-	tv.tv_usec += (ms%1000) * 1000;
-	if (tv.tv_usec >= 1000000) {
+	uint32_t ms = (uint32_t) msecs;
+	struct timespec tv;
+
+	clock_gettime (CLOCK_REALTIME, &tv);
+	tv.tv_sec += ms/1000UL;
+	tv.tv_nsec += (ms%1000UL) * 1000000UL;
+	if (tv.tv_nsec >= 1000000000L) {
 		tv.tv_sec += 1;
-		tv.tv_usec -= 1000000;
+		tv.tv_nsec -= 1000000000L;
 	}
 
 	ts->tv_sec = tv.tv_sec;
-	ts->tv_nsec = tv.tv_usec * 1000L;
+	ts->tv_nsec = tv.tv_nsec;
 	return 0;
 }
 
