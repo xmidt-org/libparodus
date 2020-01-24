@@ -323,6 +323,15 @@ int send_reply (libpd_instance_t instance, wrp_msg_t *wrp_msg)
 	return libparodus_send (instance, wrp_msg);
 }
 
+int test_send_svc_alive (libpd_instance_t instance)
+{
+  wrp_msg_t svc_alive_msg;
+
+  svc_alive_msg.msg_type = WRP_MSG_TYPE__SVC_ALIVE;	
+  return libparodus_send (instance, (wrp_msg_t *) &svc_alive_msg);
+}
+ 
+
 char *new_str (const char *str)
 {
 	char *buf = malloc (strlen(str) + 1);
@@ -404,12 +413,14 @@ int send_event_msgs (unsigned *msg_num, unsigned *event_num, int count,
 			return 0;
 	}
 	if (both)
-		send_flag = 1;
+	  send_flag = 1;
 	for (i=0; i<count; i++) {
-		(*event_num)++;
-		if (send_event_msg ("---LIBPARODUS---", "---ParodusService---",
-			"---EventMessagePayload####", *event_num, send_flag) != 0)
-			return -1;
+	  if (0==i)
+	    test_send_svc_alive (test_instance1);
+	  (*event_num)++;
+	  if (send_event_msg ("---LIBPARODUS---", "---ParodusService---",
+		"---EventMessagePayload####", *event_num, send_flag) != 0)
+		return -1;
 	}
 	return 0;
 }
@@ -950,6 +961,7 @@ void test_1(void)
 		const char *tmp = cfg1.service_name;
 		cfg1.service_name = cfg2.service_name;
 		cfg2.service_name = tmp;
+		cfg1.client_url = GOOD_CLIENT_URL2;
 	}
 	rtn = libparodus_init(&test_instance1, &cfg1);
 	CU_ASSERT_FATAL (rtn == 0);

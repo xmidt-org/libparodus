@@ -80,7 +80,8 @@ typedef struct {
 
 #define WRP_QUEUE_SEND_TIMEOUT_MS	2000
 #define WRP_QNAME_HDR "/LIBPD_WRP_QUEUE"
-#define WRP_QUEUE_SIZE 50
+/*#define WRP_QUEUE_SIZE 50*/
+#define WRP_QUEUE_SIZE 2
 
 const char *wrp_qname_hdr = WRP_QNAME_HDR;
 
