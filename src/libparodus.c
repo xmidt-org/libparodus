@@ -44,6 +44,11 @@
 
 #define URL_SIZE 32
 
+#define DBG_QMEM 1
+
+#if DBG_QMEM
+#include <assert.h>
+#endif
 
 typedef struct {
 	int run_state;
@@ -62,7 +67,16 @@ typedef struct {
 	pthread_t wrp_receiver_tid;
 	pthread_mutex_t send_mutex;
 	bool auth_received;
+#if DBG_QMEM
+	libpd_mq_t saved_wrp_queue;
+#endif
 } __instance_t;
+
+#if DBG_QMEM
+#define CHECK_QMEM(inst) assert (inst->wrp_queue == inst->saved_wrp_queue)
+#else
+#define CHECK_QMEM(inst)
+#endif
 
 #define SOCK_SEND_TIMEOUT_MS 2000
 
@@ -522,6 +536,9 @@ int libparodus_init_dbg (libpd_instance_t *instance, libpd_cfg_t *libpd_cfg,
 			SETERR (oserr, LIBPD_ERR_INIT_QUEUE + err); 
 			return LIBPD_ERROR_INIT_QUEUE;
 		}
+#if DBG_QMEM
+		inst->saved_wrp_queue = inst->wrp_queue;
+#endif
 		libpd_log (LEVEL_INFO, ("LIBPARODUS: Created queues\n"));
 		err = create_thread (&inst->wrp_receiver_tid, wrp_receiver_thread,
 				inst);
@@ -752,7 +769,7 @@ int libparodus_receive_dbg (libpd_instance_t instance, wrp_msg_t **msg,
 		err_info->err_detail = LIBPD_ERR_RCV_NULL_INST;
 		return LIBPD_ERROR_RCV_NULL_INST;
 	}
-
+	CHECK_QMEM(inst);
 	if (!inst->cfg.receive) {
 		libpd_log (LEVEL_ERROR, ("No receive option on libparodus_receive\n"));
 		err_info->err_detail = LIBPD_ERR_RCV_CFG;

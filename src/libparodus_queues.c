@@ -23,6 +23,12 @@
 #include <pthread.h>
 #include "libparodus_log.h"
 
+#define DBG_QMEM 1
+
+#if DBG_QMEM
+#include <assert.h>
+#endif
+
 typedef struct queue {
 	const char *queue_name;
 	unsigned max_msgs;
@@ -33,7 +39,31 @@ typedef struct queue {
 	void **msg_array;
 	int head_index;
 	int tail_index;
+#if DBG_QMEM
+    unsigned saved_max_msgs;
+    void **saved_msg_array;
+#endif
 } queue_t;
+
+#if DBG_QMEM
+#define check_max_msgs(q) assert (q->max_msgs == q->saved_max_msgs)
+#define check_msg_array(q) assert (q->msg_array == q->saved_msg_array)
+#define validate_head_index(q) assert ( \
+  (q->head_index >= -1) && (q->head_index < (int)q->max_msgs) \
+  )
+#define validate_tail_index(q) assert ( \
+  (q->tail_index >= -1) && (q->tail_index < (int)q->max_msgs) \
+  )
+#define CHECK_QMEM(q) {\
+  check_max_msgs(q); check_msg_array(q); validate_head_index(q); validate_tail_index(q); \
+ }
+#else
+#define check_max_msgs(q)
+#define check_msg_array(q)
+#define validate_head_index(q)
+#define validate_tail_index(q)
+#define CHECK_QMEM(q)
+#endif
 
 int libpd_qcreate (libpd_mq_t *mq, const char *queue_name, 
 	unsigned max_msgs, int *exterr)
@@ -106,7 +136,10 @@ int libpd_qcreate (libpd_mq_t *mq, const char *queue_name,
 		free (newq);
 		return LIBPD_QERR_CREATE_ALLOC_2;
 	}
-
+#if DBG_QMEM
+    newq->saved_max_msgs = newq->max_msgs;
+    newq->saved_msg_array = newq->msg_array;
+#endif
 	*mq = (libpd_mq_t) newq;
 	return 0;
 }
@@ -178,6 +211,7 @@ int libpd_qsend (libpd_mq_t mq, void *msg, unsigned timeout_ms, int *exterr)
 	*exterr = 0;
 	if (NULL == mq)
 		return LIBPD_QERR_SEND_NULL;
+	CHECK_QMEM(q);
 	pthread_mutex_lock (&q->mutex);
 	while (true) {
 		if (enqueue_msg (q, msg))
@@ -190,6 +224,7 @@ int libpd_qsend (libpd_mq_t mq, void *msg, unsigned timeout_ms, int *exterr)
 			pthread_mutex_unlock (&q->mutex);
 			return LIBPD_QERR_SEND_EXPTIME;
 		}
+		CHECK_QMEM(q);
 		rtn = pthread_cond_timedwait (&q->not_full_cond, &q->mutex, &ts);
 		if (rtn != 0) {
 			if (rtn == ETIMEDOUT) {
@@ -219,6 +254,7 @@ int libpd_qreceive (libpd_mq_t mq, void **msg, unsigned timeout_ms, int *exterr)
 	*exterr = 0;
 	if (NULL == mq)
 		return LIBPD_QERR_RCV_NULL;
+	CHECK_QMEM(q);
 	pthread_mutex_lock (&q->mutex);
 	while (true) {
 		msg__ = dequeue_msg (q);
@@ -232,6 +268,7 @@ int libpd_qreceive (libpd_mq_t mq, void **msg, unsigned timeout_ms, int *exterr)
 			pthread_mutex_unlock (&q->mutex);
 			return LIBPD_QERR_RCV_EXPTIME;
 		}
+		CHECK_QMEM(q);
 		rtn = pthread_cond_timedwait (&q->not_empty_cond, &q->mutex, &ts);
 		if (rtn != 0) {
 			if (rtn == ETIMEDOUT) {
