@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Switched from nanomsg (Release 1.1.2) to NNG (Release v1.0.1)
 - Revert from NNG
 - Update to use nanomsg version 1.1.4
+- Add notify-stress example app
 
 ## [1.0.0] - 2018-06-19
 ### Added
