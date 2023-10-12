@@ -20,6 +20,10 @@
 #include <wrp-c/wrp-c.h>
 #include "libparodus_log.h"
 
+#ifdef __cplusplus
+extern "C" { /* open extern "C" */
+#endif
+
 /**
  * This module is linked with the client, and provides connectivity
  * to the parodus service.
@@ -238,5 +242,9 @@ int libparodus_send (libpd_instance_t instance, wrp_msg_t *msg);
  * @return string value of the specified error code
  */
 const char *libparodus_strerror (libpd_error_t err);
+
+#ifdef __cplusplus
+} /* close extern "C" */
+#endif
 
 #endif
